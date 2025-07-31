@@ -1,3 +1,5 @@
+# keep.py
+
 import os
 import json
 import gspread
@@ -8,11 +10,15 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # --- Configuration ---
+# The ID of the Google Drive folder where you want to store the sheet and images.
+# Find this in the URL of the folder (e.g., .../drive/folders/THIS_IS_THE_ID)
+PARENT_DRIVE_FOLDER_ID = 'your-parent-folder-id-here'
+
 # The name of your Google Cloud Storage bucket containing the Keep Takeout files.
 GCS_BUCKET_NAME = 'your-gcs-bucket-name'
 
 # The name of the Google Sheet to create.
-SHEET_NAME = 'Google Keep Notes'
+SHEET_NAME = 'Google Keep Notes Import'
 
 # The name of the main folder to create in Google Drive for images.
 DRIVE_FOLDER_NAME = 'Google Keep Images'
@@ -49,24 +55,37 @@ def main():
         print("Please ensure the bucket exists and the service account has 'Storage Object Viewer' role.")
         return
 
-    # Create the main folder in Google Drive for images.
-    drive_folder_id = create_drive_folder(drive_service, DRIVE_FOLDER_NAME)
+    # Create the main folder for images inside the specified parent folder.
+    drive_folder_id = create_drive_folder(drive_service, DRIVE_FOLDER_NAME, parent_id=PARENT_DRIVE_FOLDER_ID)
     if not drive_folder_id:
-        print("Could not create the main Google Drive folder. Aborting.")
+        print(f"Could not create the main Google Drive folder inside parent '{PARENT_DRIVE_FOLDER_ID}'. Aborting.")
         return
     print(f"Created Google Drive folder: '{DRIVE_FOLDER_NAME}'")
 
-    # Create the Google Sheet.
+    # Create the Google Sheet and move it into the parent folder.
     spreadsheet = gspread_client.create(SHEET_NAME)
     worksheet = spreadsheet.sheet1
     worksheet.append_row(['Title', 'Text', 'Image Folder Link', 'Labels'])
-    print(f"Created Google Sheet: '{SHEET_NAME}'")
+    
+    # Move the newly created spreadsheet to the specified parent folder
+    try:
+        file = drive_service.files().get(fileId=spreadsheet.id, fields='parents').execute()
+        previous_parents = ",".join(file.get('parents'))
+        drive_service.files().update(
+            fileId=spreadsheet.id,
+            addParents=PARENT_DRIVE_FOLDER_ID,
+            removeParents=previous_parents,
+            fields='id, parents'
+        ).execute()
+        print(f"Created and moved Google Sheet '{SHEET_NAME}' to the specified parent folder.")
+    except Exception as e:
+        print(f"Warning: Could not move the sheet to the parent folder. It will be in your Drive's root. Error: {e}")
+
 
     # Get all files from the GCS bucket.
     print(f"Fetching files from GCS bucket '{GCS_BUCKET_NAME}'...")
     blobs = storage_client.list_blobs(GCS_BUCKET_NAME)
     
-    # Create a dictionary mapping file paths to blobs for quick lookup
     blob_map = {blob.name: blob for blob in blobs}
     json_files = [blob for name, blob in blob_map.items() if name.endswith('.json')]
 
@@ -92,8 +111,6 @@ def main():
         image_folder_link = ''
 
         if attachments:
-            # Create a subfolder for the note's images.
-            # Sanitize the title to be a valid folder name
             sanitized_title = "".join([c for c in title if c.isalpha() or c.isdigit() or c==' ']).rstrip()
             note_folder_name = sanitized_title if sanitized_title else f"Note_{os.path.splitext(os.path.basename(blob.name))[0]}"
             
@@ -103,7 +120,6 @@ def main():
                 image_folder_link = f"https://drive.google.com/drive/folders/{note_drive_folder_id}"
                 print(f"  - Created Drive subfolder: '{note_folder_name}'")
 
-                # Download images from GCS and upload to Drive.
                 for attachment in attachments:
                     image_path_in_gcs = attachment.get('filePath')
                     if not image_path_in_gcs:
@@ -114,33 +130,27 @@ def main():
                         print(f"    - Image not found in GCS: {image_path_in_gcs}")
                         continue
                     
-                    # Download image to a temporary local file
                     local_temp_path = os.path.basename(image_path_in_gcs)
                     try:
                         image_blob.download_to_filename(local_temp_path)
                         print(f"    - Downloaded {image_path_in_gcs} from GCS.")
                         
-                        # Upload to Google Drive.
                         upload_file_to_drive(drive_service, local_temp_path, note_drive_folder_id)
                         print(f"    - Uploaded {local_temp_path} to Drive.")
 
                     except Exception as e:
                         print(f"    - Error processing attachment {image_path_in_gcs}: {e}")
                     finally:
-                        # Clean up the local file.
                         if os.path.exists(local_temp_path):
                             os.remove(local_temp_path)
 
-        # Add the note to the Google Sheet.
         worksheet.append_row([title, text_content, image_folder_link, labels])
         print(f"  - Added note to sheet: '{title}'")
 
     print("\nImport complete!")
 
 def create_drive_folder(drive_service, folder_name, parent_id=None):
-    """
-    Creates a folder in Google Drive.
-    """
+    """Creates a folder in Google Drive."""
     file_metadata = {
         'name': folder_name,
         'mimeType': 'application/vnd.google-apps.folder'
@@ -156,14 +166,11 @@ def create_drive_folder(drive_service, folder_name, parent_id=None):
         return None
 
 def upload_file_to_drive(drive_service, file_path, folder_id):
-    """
-    Uploads a file to a specific folder in Google Drive.
-    """
+    """Uploads a file to a specific folder in Google Drive."""
     file_metadata = {
         'name': os.path.basename(file_path),
         'parents': [folder_id]
     }
-    # Guess the MIME type of the file, or default to a generic binary type.
     mimetype, _ = mimetypes.guess_type(file_path)
     media = MediaFileUpload(file_path, mimetype=mimetype or 'application/octet-stream')
     try:
