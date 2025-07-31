@@ -1,11 +1,9 @@
 # notes-to-sheets
-Facilitates importing of notes from tools like Google Keep and Evernote into Google Sheets
+Facilitates importing of notes from tools like Google Keep and Evernote into Google Sheets.
 
-# Google Keep
+# Google Keep Importer
 
-This script exports your Google Keep notes to a Google Sheet. It saves associated images to a corresponding Google Drive folder and links them in the sheet, creating an organized, AppSheet-friendly backup.
-
-**Disclaimer:** This script uses the enterprise-only Google Keep API and requires a Google Workspace account with a service account configured for domain-wide delegation.
+This script automates importing your Google Keep notes from a Google Takeout export stored in Google Cloud Storage (GCS) into a Google Sheet. It handles associated images by saving them to a dedicated folder in your Google Drive and linking to them from the sheet. This creates a clean, organized, and AppSheet-friendly representation of your notes.
 
 ## Prerequisites
 
@@ -94,18 +92,26 @@ venv/
 
 ## Running the Script
 
-1.  **Upload Takeout Files**: Unzip your Google Keep Takeout file and upload all its contents (all `.json` and image files) to your GCS bucket.
-2.  **Configure Script**: Open `keep.py` and update the `GCS_BUCKET_NAME` variable with the name of your bucket.
-3.  **Execute**: Run the script from your terminal:
+1.  **Create and Share a Parent Folder in Google Drive**:
+    * In your personal Google Drive, create a new folder (e.g., "Note Imports").
+    * Open the folder and copy the **folder ID** from the URL in your browser's address bar. It's the long string of characters at the end.
+    * Right-click the folder, click "Share," and paste the `client_email` from your `service_account.json` file into the sharing dialog.
+    * Grant the service account **Editor** permissions.
+
+2.  **Upload Takeout Files**: Unzip your Google Keep Takeout file and upload all its contents (all `.json` and image files) to your GCS bucket.
+
+3.  **Configure Script**: Open `keep.py` and update the following variables:
+    * `PARENT_DRIVE_FOLDER_ID`: Paste the folder ID you copied in step 1.
+    * `GCS_BUCKET_NAME`: Enter the name of your GCS bucket.
+
+4.  **Execute**: Run the script from your terminal:
 
 ```bash
 python keep.py
 ```
 
-The script will authenticate, read the notes and images from your GCS bucket, create a "Google Keep Notes" sheet and a "Google Keep Images" Drive folder, and then populate them with your notes and linked images.
+The script will now create the Google Sheet and the "Google Keep Images" folder inside the specific parent folder you shared with it.
 
 ## AppSheet Integration (Optional)
 
 The generated Google Sheet is structured for easy integration with AppSheet, allowing you to create a mobile app from your notes.
-
-
