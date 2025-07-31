@@ -9,7 +9,7 @@ This script exports your Google Keep notes to a Google Sheet. It saves associate
 
 ## Prerequisites
 
-* A Google Workspace account.
+* A Google Takeout export of your Google Keep data, unzipped and uploaded to a Google Cloud Storage bucket.
 * A Debian-based Linux distribution (e.g., Debian, Ubuntu, Mint).
 * Familiarity with the command line.
 
@@ -23,8 +23,8 @@ sudo apt update && sudo apt upgrade
 sudo apt install python3 python3-pip python3-venv
 
 # Create and activate a virtual environment
-mkdir google-keep-exporter
-cd google-keep-exporter
+mkdir note-importers
+cd note-importers
 python3 -m venv venv
 source venv/bin/activate
 ```
@@ -37,37 +37,31 @@ Start by creating a new project in the [Google Cloud Console](https://console.cl
 
 ### 2. Enable APIs
 
-Enable the **Google Drive API**, **Google Sheets API**, and **Google Keep API** in the "APIs & Services" > "Library" section of your project.
+Enable the following APIs in the "APIs & Services" > "Library" section of your project:
+
+* **Google Drive API**
+* **Google Sheets API**
+* **Cloud Storage API**
 
 ### 3. Create a Service Account
 
 A service account is needed for the script to make authorized API calls.
 
-1. Navigate to "APIs & Services" > "Credentials".
-2. Click "Create Credentials" and select "Service account."
-3. Name the account and grant it the "Editor" role.
-4. From the "Keys" tab, create and download a new JSON key. **Keep this file secure.**
-
-### 4. Grant Domain-Wide Delegation
-
-The Keep API requires you to grant domain-wide delegation to the service account.
-
-1. From the service account's details in the Cloud Console, copy its "Client ID."
-2. Go to your Google Workspace Admin console.
-3. Navigate to "Security" > "Access and data control" > "API controls."
-4. Under "Domain-wide Delegation," add a new client using the copied ID.
-5. Authorize the following OAuth scopes:
-   * `https://www.googleapis.com/auth/keep`
-   * `https://www.googleapis.com/auth/drive`
-   * `https://www.googleapis.com/auth/spreadsheets`
+1.  Navigate to "APIs & Services" > "Credentials".
+2.  Click "Create Credentials" and select "Service account."
+3.  Name the account and grant it the following roles:
+    * **Editor** (for creating Sheets and Drive folders)
+    * **Storage Object Viewer** (for reading from GCS)
+4.  From the "Keys" tab, create and download a new JSON key. **Keep this file secure.**
 
 ## Project Setup
 
-### 1. Clone the Repository
+### 1. Place Script in Project Directory
 
-Clone this repository or create a new directory and place the script inside.
+Save the Python script as `keep.py` inside your `note-importers` directory.
 
 ### 2. Create `requirements.txt`
+
 Create a file named `requirements.txt` in your project directory and add the following lines. This file lists all the Python libraries the script needs.
 
 ```
@@ -76,11 +70,12 @@ google-auth-httplib2
 google-auth-oauthlib
 gspread
 google-auth
+google-cloud-storage
 ```
 
 ### 3. Install Dependencies
 
-With your virtual environment active, install the necessary libraries using the file you just created:
+With your virtual environment active, install the necessary libraries:
 
 ```bash
 pip install -r requirements.txt
@@ -94,19 +89,23 @@ Rename your downloaded JSON key to `service_account.json` and place it in the pr
 # Ignore credentials and cache
 service_account.json
 __pycache__/
+venv/
 ```
 
 ## Running the Script
 
-Execute the `main.py` file to begin the export:
+1.  **Upload Takeout Files**: Unzip your Google Keep Takeout file and upload all its contents (all `.json` and image files) to your GCS bucket.
+2.  **Configure Script**: Open `keep.py` and update the `GCS_BUCKET_NAME` variable with the name of your bucket.
+3.  **Execute**: Run the script from your terminal:
 
 ```bash
-python main.py
+python keep.py
 ```
 
-The script will authenticate, create a "Google Keep Notes" sheet and a "Google Keep Images" Drive folder, and then populate them with your notes and linked images.
+The script will authenticate, read the notes and images from your GCS bucket, create a "Google Keep Notes" sheet and a "Google Keep Images" Drive folder, and then populate them with your notes and linked images.
 
 ## AppSheet Integration (Optional)
 
 The generated Google Sheet is structured for easy integration with AppSheet, allowing you to create a mobile app from your notes.
+
 
