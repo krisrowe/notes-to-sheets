@@ -1,0 +1,55 @@
+# Google Keep Importer Configuration
+# Modify these settings to customize the import behavior
+
+# Processing actions for different note attributes
+# Each setting can be: "label", "error", "skip", or "ignore"
+processing:
+  # Color processing - how to handle non-DEFAULT colors (RED, BLUE, etc.)
+  # label: Add color name as label (e.g., "RED", "BLUE")
+  # error: Exit if note has non-DEFAULT color
+  # skip: Skip notes with non-DEFAULT colors
+  # ignore: Process note normally, don't add color labels
+  color: "error"
+
+  # Trashed notes processing - how to handle trashed notes
+  # label: Add "Trashed" label to trashed notes
+  # error: Exit if note is trashed
+  # skip: Skip trashed notes entirely
+  # ignore: Process trashed notes normally, don't add "Trashed" label
+  trashed: "skip"
+
+  # Archived notes processing - how to handle archived notes
+  # label: Add "Archived" label to archived notes
+  # error: Exit if note is archived
+  # skip: Skip archived notes entirely
+  # ignore: Process archived notes normally, don't add "Archived" label
+  archived: "label"
+
+  # Pinned notes processing - how to handle pinned notes
+  # label: Add "Pinned" label to pinned notes
+  # error: Exit if note is pinned
+  # skip: Skip pinned notes entirely
+  # ignore: Process pinned notes normally, don't add "Pinned" label
+  pinned: "label"
+
+  # HTML content processing - how to handle HTML content
+  # label: Use textContentHtml and add "HTML" label
+  # error: Exit if note has HTML content
+  # skip: Skip notes with HTML content
+  # ignore: Use textContent instead, log the conversion
+  html_content: "ignore"
+
+  # Sharing processing - how to handle shared/received notes
+  # label: Add "Shared"/"Received" labels based on sharing status
+  # error: Exit if note is shared
+  # skip: Skip shared notes entirely
+  # ignore: Process shared notes normally, don't add sharing labels
+  shared: "label"
+
+# Label names (when using "label" action)
+labels:
+  trashed: "Trashed"      # Label for notes marked as trashed
+  pinned: "Pinned"        # Label for notes marked as pinned
+  archived: "Archived"    # Label for notes marked as archived
+  shared: "Shared"        # Label for notes you own and shared with others
+  received: "Received"    # Label for notes shared with you by others 

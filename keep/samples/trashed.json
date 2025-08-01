@@ -1,0 +1,10 @@
+{
+  "color": "DEFAULT",
+  "isTrashed": true,
+  "isPinned": false,
+  "isArchived": false,
+  "textContent": "This is a trashed note that should be skipped",
+  "title": "Trashed Note",
+  "userEditedTimestampUsec": 1660842519191000,
+  "createdTimestampUsec": 1660842497197000
+} 

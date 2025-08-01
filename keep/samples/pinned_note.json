@@ -1,0 +1,10 @@
+{
+  "color": "DEFAULT",
+  "isTrashed": false,
+  "isPinned": true,
+  "isArchived": false,
+  "textContent": "This is a pinned note",
+  "title": "Pinned Note",
+  "userEditedTimestampUsec": 1660842519191000,
+  "createdTimestampUsec": 1660842497197000
+} 

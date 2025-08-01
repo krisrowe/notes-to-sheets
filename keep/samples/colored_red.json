@@ -1,0 +1,10 @@
+{
+  "color": "RED",
+  "isTrashed": false,
+  "isPinned": false,
+  "isArchived": false,
+  "textContent": "This is a red-colored note",
+  "title": "Red Colored Note",
+  "userEditedTimestampUsec": 1660842519191000,
+  "createdTimestampUsec": 1660842497197000
+} 

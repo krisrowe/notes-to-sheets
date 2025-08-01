@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "createdTimestampUsec"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The title of the note"
+    },
+    "textContent": {
+      "type": "string",
+      "description": "The text content of the note"
+    },
+    "textContentHtml": {
+      "type": "string",
+      "description": "The HTML version of the text content"
+    },
+    "color": {
+      "type": "string",
+      "enum": ["DEFAULT", "RED", "ORANGE", "YELLOW", "GREEN", "TEAL", "BLUE", "PURPLE", "PINK", "BROWN", "GRAY"],
+      "description": "The color of the note"
+    },
+    "isTrashed": {
+      "type": "boolean",
+      "description": "Whether the note is in the trash"
+    },
+    "isPinned": {
+      "type": "boolean",
+      "description": "Whether the note is pinned"
+    },
+    "isArchived": {
+      "type": "boolean",
+      "description": "Whether the note is archived"
+    },
+    "createdTimestampUsec": {
+      "type": "integer",
+      "description": "Creation timestamp in microseconds"
+    },
+    "userEditedTimestampUsec": {
+      "type": "integer",
+      "description": "Last edited timestamp in microseconds"
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["filePath", "mimetype"],
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Path to the attachment file"
+          },
+          "mimetype": {
+            "type": "string",
+            "pattern": "^image/",
+            "description": "MIME type of the attachment (must be image)"
+          }
+        }
+      },
+      "description": "Array of file attachments"
+    },
+    "annotations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source"],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Description of the annotation"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["WEBLINK", "SHEETS", "DOCS", "GMAIL"],
+            "description": "Source type of the annotation (WEBLINK for web links, SHEETS for Google Sheets links, DOCS for Google Docs links, GMAIL for Gmail links)"
+          },
+          "title": {
+            "type": "string",
+            "description": "Title of the annotation"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the annotation"
+          }
+        }
+      },
+      "description": "Array of annotations"
+    },
+    "listContent": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "isChecked"],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Text content of the list item"
+          },
+          "textHtml": {
+            "type": "string",
+            "description": "HTML version of the list item text"
+          },
+          "isChecked": {
+            "type": "boolean",
+            "description": "Whether the list item is checked"
+          }
+        }
+      },
+      "description": "Array of checklist items"
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the label"
+          }
+        }
+      },
+      "description": "Array of labels"
+    },
+    "sharees": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["isOwner", "type", "email"],
+        "properties": {
+          "isOwner": {
+            "type": "boolean",
+            "description": "Whether this user is the owner of the note"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["USER"],
+            "description": "Type of sharee (only USER supported)"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Email address of the sharee"
+          }
+        }
+      },
+      "description": "Array of users the note is shared with (not preserved in export)"
+    }
+  }
+} 

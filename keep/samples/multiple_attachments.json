@@ -1,0 +1,24 @@
+{
+  "attachments": [
+    {
+      "filePath": "image1.jpg",
+      "mimetype": "image/jpeg"
+    },
+    {
+      "filePath": "image2.png",
+      "mimetype": "image/png"
+    },
+    {
+      "filePath": "screenshot.png",
+      "mimetype": "image/png"
+    }
+  ],
+  "color": "DEFAULT",
+  "isTrashed": false,
+  "isPinned": false,
+  "isArchived": false,
+  "textContent": "This is a note with multiple image attachments",
+  "title": "Multiple Attachments Note",
+  "userEditedTimestampUsec": 1660842519191000,
+  "createdTimestampUsec": 1660842497197000
+} 

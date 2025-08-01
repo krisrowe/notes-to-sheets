@@ -1,0 +1,21 @@
+{
+  "color": "DEFAULT",
+  "isTrashed": false,
+  "isPinned": false,
+  "isArchived": false,
+  "textContent": "This is a note with existing labels",
+  "title": "Note With Labels",
+  "userEditedTimestampUsec": 1660842519191000,
+  "createdTimestampUsec": 1660842497197000,
+  "labels": [
+    {
+      "name": "Work"
+    },
+    {
+      "name": "Important"
+    },
+    {
+      "name": "Project"
+    }
+  ]
+} 

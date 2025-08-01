@@ -1,0 +1,22 @@
+{
+  "color": "DEFAULT",
+  "isTrashed": false,
+  "isPinned": false,
+  "isArchived": false,
+  "textContent": "This is a note I own and have shared with others",
+  "title": "Shared Note (Owned)",
+  "userEditedTimestampUsec": 1660842519191000,
+  "createdTimestampUsec": 1660842497197000,
+  "sharees": [
+    {
+      "isOwner": true,
+      "type": "USER",
+      "email": "owner@example.com"
+    },
+    {
+      "isOwner": false,
+      "type": "USER",
+      "email": "shared@example.com"
+    }
+  ]
+} 

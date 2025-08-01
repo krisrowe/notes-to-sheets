@@ -1,0 +1,17 @@
+{
+  "color": "DEFAULT",
+  "isTrashed": false,
+  "isPinned": false,
+  "isArchived": false,
+  "textContent": "This is a note someone else shared with me",
+  "title": "Shared Note (Received)",
+  "userEditedTimestampUsec": 1660842519191000,
+  "createdTimestampUsec": 1660842497197000,
+  "sharees": [
+    {
+      "isOwner": false,
+      "type": "USER",
+      "email": "recipient@example.com"
+    }
+  ]
+} 
