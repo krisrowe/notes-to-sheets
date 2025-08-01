@@ -8,6 +8,7 @@ import time
 import argparse
 import yaml
 import random
+import glob
 from datetime import datetime
 from google.cloud import storage
 from googleapiclient.discovery import build
@@ -150,7 +151,7 @@ def validate_keep_note(note_data, schema=None):
 
 
 
-def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
+def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_image_import=False):
     # Initialize timing statistics
     timing_stats = {
         'gcs_total_time': 0.0,
@@ -160,10 +161,37 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
         'start_time': time.time()
     }
     """
-    Main function to run the export process from GCS Takeout to Sheets.
+    Main function to run the export process from GCS Takeout or local directory to Sheets.
+    
+    Args:
+        source_path: Either a GCS bucket name (e.g., 'my-bucket') or local directory path
+        drive_folder_id: Google Drive folder ID where to create the import
+        max_notes: Maximum number of notes to import (None for all)
+        ignore_errors: Whether to continue on errors
     """
-    print("Starting Google Keep Takeout import from GCS...")
-    print(f"Using bucket: {bucket_name}")
+    # Determine if source_path is a GCS bucket or local directory
+    # If it starts with gs://, it's GCS. Otherwise, check if it's a valid directory path
+    if source_path.startswith('gs://'):
+        # Extract bucket name from gs://bucket-name format
+        bucket_name = source_path[5:]  # Remove 'gs://' prefix
+        is_gcs = True
+        source_path = bucket_name  # Use just the bucket name for GCS operations
+    elif os.path.isdir(source_path):
+        is_gcs = False
+    else:
+        print(f"Error: '{source_path}' is not a valid GCS bucket (gs://bucket-name) or local directory path")
+        print("Examples:")
+        print("  GCS: gs://my-bucket-name")
+        print("  Local: /path/to/directory or ./relative/path")
+        sys.exit(1)
+    
+    if is_gcs:
+        print("Starting Google Keep Takeout import from GCS...")
+        print(f"Using bucket: {source_path}")
+    else:
+        print("Starting Google Keep Takeout import from local directory...")
+        print(f"Using directory: {source_path}")
+    
     print(f"Using Drive folder ID: {drive_folder_id}")
 
     # Load configuration
@@ -181,20 +209,22 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
     from google.auth import default
     creds, _ = default(scopes=['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/devstorage.read_only'])
     
-
-    
-    storage_client = storage.Client(credentials=creds)
     drive_service = build('drive', 'v3', credentials=creds)
     gspread_client = gspread.authorize(creds)
     print("✅ Using personal account for all operations - you will own all created files")
 
-    # Get the GCS bucket
-    try:
-        bucket = storage_client.get_bucket(bucket_name)
-    except Exception as e:
-        print(f"Error accessing GCS bucket '{bucket_name}': {e}")
-        print("Please ensure the bucket exists and your personal account has 'Storage Object Viewer' role.")
-        return
+    # Initialize GCS client only if needed
+    storage_client = None
+    bucket = None
+    if is_gcs:
+        storage_client = storage.Client(credentials=creds)
+        # Get the GCS bucket
+        try:
+            bucket = storage_client.get_bucket(source_path)
+        except Exception as e:
+            print(f"Error accessing GCS bucket '{source_path}': {e}")
+            print("Please ensure the bucket exists and your personal account has 'Storage Object Viewer' role.")
+            return
 
     # Check for existing import folder or create a new one
     import_folder_name = "Keep Notes Import"
@@ -296,18 +326,29 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
         return
     print(f"Created images folder: '{IMAGES_FOLDER_NAME}'")
 
-    # Get all files from the GCS bucket.
-    print(f"Fetching files from GCS bucket '{bucket_name}'...")
-    gcs_start = time.time()
-    blobs = storage_client.list_blobs(bucket_name)
-    timing_stats['gcs_total_time'] += time.time() - gcs_start
-    
-    # Create a dictionary mapping file paths to blobs for quick lookup
-    blob_map = {blob.name: blob for blob in blobs}
-    json_files = [blob for name, blob in blob_map.items() if name.endswith('.json')]
+    # Get all files from the source (GCS bucket or local directory)
+    if is_gcs:
+        print(f"Fetching files from GCS bucket '{source_path}'...")
+        gcs_start = time.time()
+        blobs = storage_client.list_blobs(source_path)
+        timing_stats['gcs_total_time'] += time.time() - gcs_start
+        
+        # Create a dictionary mapping file paths to blobs for quick lookup
+        blob_map = {blob.name: blob for blob in blobs}
+        json_files = [blob for name, blob in blob_map.items() if name.endswith('.json')]
+    else:
+        print(f"Scanning files in local directory '{source_path}'...")
+        # Get all JSON files from local directory
+        json_pattern = os.path.join(source_path, "*.json")
+        json_files = glob.glob(json_pattern)
+        # Convert to list of file paths for consistency
+        json_files = [os.path.basename(f) for f in json_files]
 
     if not json_files:
-        print("No .json files found in the bucket.")
+        if is_gcs:
+            print("No .json files found in the bucket.")
+        else:
+            print("No .json files found in the directory.")
         return
 
     print(f"Found {len(json_files)} JSON note files.")
@@ -341,34 +382,56 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
     }
     
     # Process each JSON file.
-    for blob in json_files:
-        print(f"\nProcessing note: {blob.name}")
-        summary['processed'] += 1
-        
-        try:
-            gcs_start = time.time()
-            note_data = json.loads(blob.download_as_text())
-            timing_stats['gcs_total_time'] += time.time() - gcs_start
+    for file_item in json_files:
+        if is_gcs:
+            # file_item is a blob
+            print(f"\nProcessing note: {file_item.name}")
+            summary['processed'] += 1
             
-            # Validate against JSON schema if available
-            if schema:
-                is_valid, error_msg, error_path, schema_path = validate_keep_note(note_data, schema)
-                if not is_valid:
-                    print(f"  - JSON schema validation failed for {blob.name}")
-                    print(f"    Error: {error_msg}")
-                    print(f"    Path: {' -> '.join(str(p) for p in error_path)}")
-                    print(f"    Schema path: {' -> '.join(str(p) for p in schema_path)}")
-                    
-                    if ignore_errors:
-                        print("  - Skipping note due to validation error (--ignore-errors flag set)")
-                        continue
-                    else:
-                        print("  - Exiting due to schema validation error (use --ignore-errors to continue)")
-                        sys.exit(1)
-                    
-        except Exception as e:
-            print(f"  - Could not parse JSON file {blob.name}. Skipping. Error: {e}")
-            continue
+            try:
+                gcs_start = time.time()
+                note_data = json.loads(file_item.download_as_text())
+                timing_stats['gcs_total_time'] += time.time() - gcs_start
+            except Exception as e:
+                print(f"Error reading file {file_item.name}: {e}")
+                summary['errors'] += 1
+                if not ignore_errors:
+                    raise
+                continue
+        else:
+            # file_item is a filename
+            print(f"\nProcessing note: {file_item}")
+            summary['processed'] += 1
+            
+            try:
+                file_path = os.path.join(source_path, file_item)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    note_data = json.load(f)
+            except Exception as e:
+                print(f"Error reading file {file_item}: {e}")
+                summary['errors'] += 1
+                if not ignore_errors:
+                    raise
+                continue
+
+        # Validate against JSON schema if available
+        if schema:
+            is_valid, error_msg, error_path, schema_path = validate_keep_note(note_data, schema)
+            if not is_valid:
+                if is_gcs:
+                    print(f"  - JSON schema validation failed for {file_item.name}")
+                else:
+                    print(f"  - JSON schema validation failed for {file_item}")
+                print(f"    Error: {error_msg}")
+                print(f"    Path: {' -> '.join(str(p) for p in error_path)}")
+                print(f"    Schema path: {' -> '.join(str(p) for p in schema_path)}")
+                
+                if ignore_errors:
+                    print("  - Skipping note due to validation error (--ignore-errors flag set)")
+                    continue
+                else:
+                    print("  - Exiting due to schema validation error (use --ignore-errors to continue)")
+                    sys.exit(1)
 
         # Process the note using the canonical processor
         try:
@@ -469,44 +532,77 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
                     attachment_title = annotation.get('title', '')
                     break
 
-            file_blob = blob_map.get(file_path_in_gcs)
-            if not file_blob:
-                print(f"    - File not found in GCS: {file_path_in_gcs}")
-                continue
-            
-            # Download file to a temporary local file
-            local_temp_path = os.path.basename(file_path_in_gcs)
-            try:
-                gcs_start = time.time()
-                file_blob.download_to_filename(local_temp_path)
-                timing_stats['gcs_total_time'] += time.time() - gcs_start
-                print(f"    - Downloaded {file_path_in_gcs} from GCS.")
+            # Handle attachment file based on source type
+            if is_gcs:
+                file_blob = blob_map.get(file_path_in_gcs)
+                if not file_blob:
+                    print(f"    - File not found in GCS: {file_path_in_gcs}")
+                    continue
                 
-                # Upload to the single images folder
-                drive_start = time.time()
-                upload_file_to_drive(drive_service, local_temp_path, images_folder_id)
-                timing_stats['drive_total_time'] += time.time() - drive_start
-                print(f"    - Uploaded {local_temp_path} to Drive.")
-
-                # Generate attachment ID and add to attachments worksheet
+                # Download file to a temporary local file
+                local_temp_path = os.path.basename(file_path_in_gcs)
+                try:
+                    gcs_start = time.time()
+                    file_blob.download_to_filename(local_temp_path)
+                    timing_stats['gcs_total_time'] += time.time() - gcs_start
+                    print(f"    - Downloaded {file_path_in_gcs} from GCS.")
+                except Exception as e:
+                    print(f"    - Error downloading attachment {file_path_in_gcs}: {e}")
+                    continue
+            else:
+                # For local storage, check if the attachment file exists
+                local_attachment_path = os.path.join(source_path, file_path_in_gcs)
+                if not os.path.exists(local_attachment_path):
+                    print(f"    - Attachment file not found: {local_attachment_path}")
+                    continue
+                
+                local_temp_path = local_attachment_path
+                print(f"    - Found attachment file: {file_path_in_gcs}")
+            
+            # Handle image upload based on no_image_import flag
+            if no_image_import:
+                # Skip Drive upload, just record the filename
+                print(f"    - Skipping Drive upload (--no-image-import): {os.path.basename(local_temp_path)}")
+                
+                # Generate attachment ID and add to attachments worksheet with filename only
                 attachment_id = generate_appsheet_id(f"{processed_note.note_id}_{file_path_in_gcs}", note_data.get('createdTimestampUsec', ''))
                 try:
                     def add_attachment():
                         sheets_start = time.time()
-                        attachments_worksheet.append_row([attachment_id, processed_note.note_id, local_temp_path, attachment_type, attachment_title])
+                        attachments_worksheet.append_row([attachment_id, processed_note.note_id, os.path.basename(local_temp_path), attachment_type, attachment_title])
                         timing_stats['sheets_total_time'] += time.time() - sheets_start
                     
                     exponential_backoff_with_retry(add_attachment)
                     time.sleep(0.1)  # Small delay to avoid rate limiting
                 except Exception as e:
                     print(f"    - Error adding attachment to sheet: {e}")
+            else:
+                # Upload to the single images folder
+                try:
+                    drive_start = time.time()
+                    upload_file_to_drive(drive_service, local_temp_path, images_folder_id)
+                    timing_stats['drive_total_time'] += time.time() - drive_start
+                    print(f"    - Uploaded {os.path.basename(local_temp_path)} to Drive.")
 
-            except Exception as e:
-                print(f"    - Error processing attachment {file_path_in_gcs}: {e}")
-            finally:
-                # Clean up the local file.
-                if os.path.exists(local_temp_path):
-                    os.remove(local_temp_path)
+                    # Generate attachment ID and add to attachments worksheet
+                    attachment_id = generate_appsheet_id(f"{processed_note.note_id}_{file_path_in_gcs}", note_data.get('createdTimestampUsec', ''))
+                    try:
+                        def add_attachment():
+                            sheets_start = time.time()
+                            attachments_worksheet.append_row([attachment_id, processed_note.note_id, local_temp_path, attachment_type, attachment_title])
+                            timing_stats['sheets_total_time'] += time.time() - sheets_start
+                        
+                        exponential_backoff_with_retry(add_attachment)
+                        time.sleep(0.1)  # Small delay to avoid rate limiting
+                    except Exception as e:
+                        print(f"    - Error adding attachment to sheet: {e}")
+
+                except Exception as e:
+                    print(f"    - Error processing attachment {file_path_in_gcs}: {e}")
+                finally:
+                    # Clean up the local file only if it was downloaded from GCS
+                    if is_gcs and os.path.exists(local_temp_path):
+                        os.remove(local_temp_path)
 
         # Process WEBLINK, SHEETS, DOCS, and GMAIL annotations (links without file attachments)
         annotations = note_data.get('annotations', [])
@@ -665,12 +761,33 @@ def upload_file_to_drive(drive_service, file_path, folder_id):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Import Google Keep notes from GCS to Google Sheets')
-    parser.add_argument('bucket_name', help='Name of your Google Cloud Storage bucket')
+    parser = argparse.ArgumentParser(
+        description='Import Google Keep notes from GCS bucket or local directory to Google Sheets',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Import from GCS bucket
+  python keep/importer.py gs://keep-notes-takeout-bucket 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf
+
+  # Import from local directory
+  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf
+
+  # Import with limits and error handling
+  python keep/importer.py gs://keep-notes-takeout-bucket 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --max-notes 100 --ignore-errors
+
+  # Import without uploading images (faster, metadata only)
+  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --no-image-import
+        """
+    )
+    parser.add_argument('source_path', 
+                       help='Source path: gs://bucket-name for GCS or /path/to/directory for local files')
     parser.add_argument('drive_folder_id', help='ID of the Google Drive folder to import into')
     parser.add_argument('--max-notes', type=int, help='Maximum number of notes to import (for trial runs)')
-    parser.add_argument('--ignore-errors', action='store_true', help='Continue processing even if schema validation fails (default: exit on first error)')
+    parser.add_argument('--ignore-errors', action='store_true', 
+                       help='Continue processing even if schema validation fails (default: exit on first error)')
+    parser.add_argument('--no-image-import', action='store_true',
+                       help='Skip uploading images to Google Drive (only record filenames in sheet)')
     
     args = parser.parse_args()
     
-    main(args.bucket_name, args.drive_folder_id, args.max_notes, args.ignore_errors)
+    main(args.source_path, args.drive_folder_id, args.max_notes, args.ignore_errors, args.no_image_import)
