@@ -176,6 +176,9 @@ python keep/importer.py ../keep-notes-takeout your-folder-id --ignore-errors
 
 # Import without uploading images (faster, metadata only)
 python keep/importer.py ../keep-notes-takeout your-folder-id --no-image-import
+
+# Import with custom batch size for better performance
+python keep/importer.py ../keep-notes-takeout your-folder-id --batch-size 50
 ```
 
 **Where to find these values:**
@@ -208,8 +211,13 @@ The importer supports several optional flags to customize the import process:
 - **`--max-notes N`**: Limit import to the first N successfully imported notes (useful for testing)
 - **`--ignore-errors`**: Continue processing even if schema validation fails (skips problematic notes)
 - **`--no-image-import`**: Skip uploading images to Google Drive (only record filenames in sheet)
+- **`--batch-size N`**: Number of notes to process in each batch (default: 20, higher values for better performance)
 
-**Performance Note**: Using `--no-image-import` can significantly speed up imports by eliminating Google Drive upload overhead, especially useful for large imports or when you only need the note metadata.
+**Performance Note**: Using `--no-image-import` can significantly speed up imports by eliminating Google Drive upload overhead, especially useful for large imports or when you only need the note metadata. The batching system reduces API calls by ~95% compared to individual row uploads.
+
+**Batching**: The importer uses batch processing to improve performance. Notes are processed in batches (default: 20) and uploaded to Google Sheets in chunks, reducing API rate limiting issues. Use `--batch-size` to adjust the batch size for your needs.
+
+**Resilient & Repeatable**: The script is designed to be safely re-run multiple times. It detects existing notes and attachments, skipping complete duplicates while adding missing attachments to incomplete notes. This handles cases where previous runs may have partially failed (e.g., notes written but attachments failed due to API limits).
 
 The script will:
 - Create a "Keep Notes Import" folder inside your specified Drive folder
@@ -221,6 +229,8 @@ The script will:
 - Import all notes from your source with their metadata and images
 - Handle both image attachments and web links
 - Skip trashed notes and handle archived notes appropriately
+- Reuse existing folders and sheets (won't create duplicates)
+- Sync images efficiently at the end of processing
 
 ### ⚠️ Data Destruction (Use with Extreme Caution)
 
@@ -249,9 +259,26 @@ python keep/wipe.py 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX
 
 **⚠️ IMPORTANT:** This operation is IRREVERSIBLE. Make sure you have backups if you need the imported data.
 
-## Error Handling
+## Error Handling & Resilience
 
 The importer includes JSON schema validation to ensure data integrity. By default, the script will **exit immediately** if any note fails schema validation to prevent data corruption.
+
+### Repeatable & Safe Re-runs
+
+The script is designed to be safely re-run multiple times without data loss or duplication:
+
+- **Complete duplicates**: Notes with all attachments are skipped entirely
+- **Incomplete notes**: Notes missing attachments have their attachments added
+- **New notes**: Previously unseen notes are imported with all attachments
+- **Folder reuse**: Existing import folders and sheets are reused, not recreated
+
+This resilience handles scenarios where previous runs may have partially failed due to:
+- API rate limiting during attachment uploads
+- Network interruptions
+- Temporary service outages
+- Manual interruption of the script
+
+The script will automatically detect and complete any partial imports from previous runs.
 
 ### Default Behavior (Strict)
 ```bash

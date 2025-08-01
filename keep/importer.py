@@ -151,7 +151,7 @@ def validate_keep_note(note_data, schema=None):
 
 
 
-def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_image_import=False):
+def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_image_import=False, batch_size=20):
     # Initialize timing statistics
     timing_stats = {
         'gcs_total_time': 0.0,
@@ -319,12 +319,31 @@ def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_i
         attachments_worksheet.append_row(['ID', 'Note', 'File', 'Type', 'Title'])
         print("Created new Notes and Attachment worksheets")
 
-    # Create the images subfolder
-    images_folder_id = create_drive_folder(drive_service, IMAGES_FOLDER_NAME, parent_id=import_folder_id)
-    if not images_folder_id:
-        print("Could not create the images folder. Aborting.")
-        return
-    print(f"Created images folder: '{IMAGES_FOLDER_NAME}'")
+    # Check for existing images subfolder or create a new one
+    images_folder_id = None
+    try:
+        query = f"name='{IMAGES_FOLDER_NAME}' and '{import_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+        files = results.get('files', [])
+        
+        if files:
+            images_folder_id = files[0]['id']
+            print(f"Found existing images folder: '{IMAGES_FOLDER_NAME}' (ID: {images_folder_id})")
+        else:
+            # Create new images folder
+            images_folder_id = create_drive_folder(drive_service, IMAGES_FOLDER_NAME, parent_id=import_folder_id)
+            if not images_folder_id:
+                print("Could not create the images folder. Aborting.")
+                return
+            print(f"Created new images folder: '{IMAGES_FOLDER_NAME}'")
+    except Exception as e:
+        print(f"Could not check for existing images folder: {e}")
+        # Fallback to creating new folder
+        images_folder_id = create_drive_folder(drive_service, IMAGES_FOLDER_NAME, parent_id=import_folder_id)
+        if not images_folder_id:
+            print("Could not create the images folder. Aborting.")
+            return
+        print(f"Created new images folder: '{IMAGES_FOLDER_NAME}'")
 
     # Get all files from the source (GCS bucket or local directory)
     if is_gcs:
@@ -357,18 +376,30 @@ def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_i
     if max_notes:
         print(f"Will limit import to {max_notes} successfully imported notes.")
     
-    # Check for existing imported notes to avoid duplicates
-    existing_note_ids = set()
+    print(f"Using batch size: {batch_size} notes per batch")
+    print(f"Processing mode: {'Metadata only (no images)' if no_image_import else 'Full import with image sync'}")
+    
+    # Check for existing imported notes to avoid duplicates (scalable approach)
+    existing_notes = {}  # note_id -> has_attachments (boolean)
     try:
-        existing_data = notes_worksheet.get_all_values()
-        if len(existing_data) > 1:  # Skip header row
-            for row in existing_data[1:]:  # Skip header
-                if len(row) >= 1:
-                    existing_note_ids.add(row[0])  # Note ID is in column 0
-        print(f"Found {len(existing_note_ids)} existing notes in sheet")
+        # Get only the ID column from notes worksheet
+        notes_col_a = notes_worksheet.col_values(1)  # Column A (ID column)
+        if len(notes_col_a) > 1:  # Skip header row
+            for note_id in notes_col_a[1:]:  # Skip header
+                if note_id:  # Skip empty cells
+                    existing_notes[note_id] = False  # Note exists, assume no attachments initially
+        print(f"Found {len(existing_notes)} existing notes in sheet")
+        
+        # Get only the Note ID column from attachments worksheet to mark notes with attachments
+        attachments_col_b = attachments_worksheet.col_values(2)  # Column B (Note ID column)
+        if len(attachments_col_b) > 1:  # Skip header row
+            for note_id in attachments_col_b[1:]:  # Skip header
+                if note_id:  # Skip empty cells
+                    existing_notes[note_id] = True  # Note has attachments
+        print(f"Found {sum(existing_notes.values())} notes with attachments")
     except Exception as e:
         print(f"Could not check existing notes: {e}")
-        existing_note_ids = set()
+        existing_notes = {}
 
     # Initialize summary tracking
     summary = {
@@ -381,6 +412,85 @@ def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_i
         'skipped': {}
     }
     
+    # Initialize session image tracking and batching
+    session_images = set()  # Track all image filenames from this session
+    current_batch = {
+        'notes': [],
+        'attachments': []
+    }
+    batch_count = 0
+    total_batches = 0
+
+    def flush_batch_to_sheet():
+        """Flush the current batch to Google Sheets."""
+        nonlocal batch_count, total_batches
+        
+        if not current_batch['notes'] and not current_batch['attachments']:
+            return
+            
+        batch_count += 1
+        print(f"\n📊 Uploading batch {batch_count}...")
+        
+        # Upload notes
+        if current_batch['notes']:
+            try:
+                def add_notes_batch():
+                    sheets_start = time.time()
+                    # Prepare batch data as list of lists
+                    notes_data = [
+                        [
+                            note_data['ID'], 
+                            note_data['Title'], 
+                            note_data['Content'], 
+                            note_data['Labels'], 
+                            note_data['Created Date'], 
+                            note_data['Modified Date']
+                        ]
+                        for note_data in current_batch['notes']
+                    ]
+                    notes_worksheet.append_rows(notes_data)
+                    timing_stats['sheets_total_time'] += time.time() - sheets_start
+                
+                exponential_backoff_with_retry(add_notes_batch)
+                print(f"  ✅ Added {len(current_batch['notes'])} notes to sheet (batch upload)")
+                time.sleep(0.1)  # Small delay to avoid rate limiting
+            except Exception as e:
+                print(f"  ❌ Error adding notes batch to sheet: {e}")
+                if not ignore_errors:
+                    raise
+        
+        # Upload attachments
+        if current_batch['attachments']:
+            try:
+                def add_attachments_batch():
+                    sheets_start = time.time()
+                    # Prepare batch data as list of lists
+                    attachments_data = [
+                        [
+                            attachment_data['ID'],
+                            attachment_data['Note'],
+                            attachment_data['File'],
+                            attachment_data['Type'],
+                            attachment_data['Title']
+                        ]
+                        for attachment_data in current_batch['attachments']
+                    ]
+                    attachments_worksheet.append_rows(attachments_data)
+                    timing_stats['sheets_total_time'] += time.time() - sheets_start
+                
+                exponential_backoff_with_retry(add_attachments_batch)
+                print(f"  ✅ Added {len(current_batch['attachments'])} attachments to sheet (batch upload)")
+                time.sleep(0.1)  # Small delay to avoid rate limiting
+            except Exception as e:
+                print(f"  ❌ Error adding attachments batch to sheet: {e}")
+                if not ignore_errors:
+                    raise
+        
+        # Clear the batch
+        current_batch['notes'] = []
+        current_batch['attachments'] = []
+        total_batches += 1
+
     # Process each JSON file.
     for file_item in json_files:
         if is_gcs:
@@ -486,11 +596,27 @@ def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_i
             else:
                 sys.exit(1)
         
-        # Skip if note already exists (check by ID)
-        if processed_note.note_id in existing_note_ids:
-            print(f"  - Skipping duplicate note: '{processed_note.title}' (ID: {processed_note.note_id})")
-            summary['duplicates'] += 1
-            continue
+        # Check if note exists and if it has any attachments
+        if processed_note.note_id in existing_notes:
+            if existing_notes[processed_note.note_id]:
+                # Note exists with attachments - skip as complete duplicate
+                print(f"  - Skipping complete duplicate note: '{processed_note.title}' (ID: {processed_note.note_id})")
+                summary['duplicates'] += 1
+                
+                # Track images from duplicates for fail-safe cleanup
+                attachments = note_data.get('attachments', [])
+                for attachment in attachments:
+                    if attachment.get('mimetype', '').startswith('image/'):
+                        filename = os.path.basename(attachment.get('filePath', ''))
+                        if filename:
+                            session_images.add(filename)
+                            print(f"    - Tracked image from duplicate: {filename}")
+                
+                continue
+            else:
+                # Note exists but has no attachments - add attachments only
+                print(f"  - Note exists but missing attachments, adding attachments: '{processed_note.title}' (ID: {processed_note.note_id})")
+                summary['attachments_added'] = summary.get('attachments_added', 0) + 1
 
         # Track annotations and attachments statistics
         annotations = note_data.get('annotations', [])
@@ -504,7 +630,7 @@ def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_i
             summary['totals']['notes_with_attachments'] = summary['totals'].get('notes_with_attachments', 0) + 1
             summary['totals']['attachments'] = summary['totals'].get('attachments', 0) + len(attachments)
 
-        # Process file attachments and add to attachments worksheet
+        # Process file attachments and track images for batch processing
         attachments = note_data.get('attachments', [])
         for attachment in attachments:
             file_path_in_gcs = attachment.get('filePath')
@@ -532,77 +658,25 @@ def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_i
                     attachment_title = annotation.get('title', '')
                     break
 
-            # Handle attachment file based on source type
-            if is_gcs:
-                file_blob = blob_map.get(file_path_in_gcs)
-                if not file_blob:
-                    print(f"    - File not found in GCS: {file_path_in_gcs}")
-                    continue
-                
-                # Download file to a temporary local file
-                local_temp_path = os.path.basename(file_path_in_gcs)
-                try:
-                    gcs_start = time.time()
-                    file_blob.download_to_filename(local_temp_path)
-                    timing_stats['gcs_total_time'] += time.time() - gcs_start
-                    print(f"    - Downloaded {file_path_in_gcs} from GCS.")
-                except Exception as e:
-                    print(f"    - Error downloading attachment {file_path_in_gcs}: {e}")
-                    continue
-            else:
-                # For local storage, check if the attachment file exists
-                local_attachment_path = os.path.join(source_path, file_path_in_gcs)
-                if not os.path.exists(local_attachment_path):
-                    print(f"    - Attachment file not found: {local_attachment_path}")
-                    continue
-                
-                local_temp_path = local_attachment_path
-                print(f"    - Found attachment file: {file_path_in_gcs}")
+            # Track image filename for session
+            filename = os.path.basename(file_path_in_gcs)
+            if filename:
+                session_images.add(filename)
+                print(f"    - Tracked image: {filename}")
+
+            # Generate attachment ID and add to batch
+            attachment_id = generate_appsheet_id(f"{processed_note.note_id}_{file_path_in_gcs}", note_data.get('createdTimestampUsec', ''))
             
-            # Handle image upload based on no_image_import flag
-            if no_image_import:
-                # Skip Drive upload, just record the filename
-                print(f"    - Skipping Drive upload (--no-image-import): {os.path.basename(local_temp_path)}")
-                
-                # Generate attachment ID and add to attachments worksheet with filename only
-                attachment_id = generate_appsheet_id(f"{processed_note.note_id}_{file_path_in_gcs}", note_data.get('createdTimestampUsec', ''))
-                try:
-                    def add_attachment():
-                        sheets_start = time.time()
-                        attachments_worksheet.append_row([attachment_id, processed_note.note_id, os.path.basename(local_temp_path), attachment_type, attachment_title])
-                        timing_stats['sheets_total_time'] += time.time() - sheets_start
-                    
-                    exponential_backoff_with_retry(add_attachment)
-                    time.sleep(0.1)  # Small delay to avoid rate limiting
-                except Exception as e:
-                    print(f"    - Error adding attachment to sheet: {e}")
-            else:
-                # Upload to the single images folder
-                try:
-                    drive_start = time.time()
-                    upload_file_to_drive(drive_service, local_temp_path, images_folder_id)
-                    timing_stats['drive_total_time'] += time.time() - drive_start
-                    print(f"    - Uploaded {os.path.basename(local_temp_path)} to Drive.")
-
-                    # Generate attachment ID and add to attachments worksheet
-                    attachment_id = generate_appsheet_id(f"{processed_note.note_id}_{file_path_in_gcs}", note_data.get('createdTimestampUsec', ''))
-                    try:
-                        def add_attachment():
-                            sheets_start = time.time()
-                            attachments_worksheet.append_row([attachment_id, processed_note.note_id, local_temp_path, attachment_type, attachment_title])
-                            timing_stats['sheets_total_time'] += time.time() - sheets_start
-                        
-                        exponential_backoff_with_retry(add_attachment)
-                        time.sleep(0.1)  # Small delay to avoid rate limiting
-                    except Exception as e:
-                        print(f"    - Error adding attachment to sheet: {e}")
-
-                except Exception as e:
-                    print(f"    - Error processing attachment {file_path_in_gcs}: {e}")
-                finally:
-                    # Clean up the local file only if it was downloaded from GCS
-                    if is_gcs and os.path.exists(local_temp_path):
-                        os.remove(local_temp_path)
+            # Add to batch (no Drive upload during processing phase)
+            current_batch['attachments'].append({
+                'ID': attachment_id,
+                'Note': processed_note.note_id,
+                'File': filename,  # Just the filename, not full path
+                'Type': attachment_type,
+                'Title': attachment_title
+            })
+            
+            print(f"    - Added attachment to batch: {filename}")
 
         # Process WEBLINK, SHEETS, DOCS, and GMAIL annotations (links without file attachments)
         annotations = note_data.get('annotations', [])
@@ -621,54 +695,151 @@ def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_i
             if url:  # Only process if there's actually a URL
                 # Generate attachment ID for the link
                 attachment_id = generate_appsheet_id(f"{processed_note.note_id}_{url}", note_data.get('createdTimestampUsec', ''))
-                try:
-                    def add_link():
-                        sheets_start = time.time()
-                        attachments_worksheet.append_row([attachment_id, processed_note.note_id, url, "Link", title])
-                        timing_stats['sheets_total_time'] += time.time() - sheets_start
-                    
-                    exponential_backoff_with_retry(add_link)
-                    time.sleep(0.1)  # Small delay to avoid rate limiting
-                    print(f"    - Added link to sheet: {title or url}")
-                except Exception as e:
-                    print(f"    - Error adding link to sheet: {e}")
+                
+                # Add to batch
+                current_batch['attachments'].append({
+                    'ID': attachment_id,
+                    'Note': processed_note.note_id,
+                    'File': url,
+                    'Type': 'Link',
+                    'Title': title
+                })
+                
+                print(f"    - Added link to batch: {title or url}")
 
-        # Add the note to the Google Sheet.
-        try:
-            def add_note():
-                note_dict = processed_note.to_dict()
-                sheets_start = time.time()
-                notes_worksheet.append_row([
-                    note_dict['ID'], 
-                    note_dict['Title'], 
-                    note_dict['Content'], 
-                    note_dict['Labels'], 
-                    note_dict['Created Date'], 
-                    note_dict['Modified Date']
-                ])
-                timing_stats['sheets_total_time'] += time.time() - sheets_start
-            
-            exponential_backoff_with_retry(add_note)
-            print(f"  - Added note to sheet: '{processed_note.title}' (ID: {processed_note.note_id})")
-            # Add a small delay to avoid rate limiting
-            time.sleep(0.1)
-        except Exception as e:
-            print(f"  - Error adding note to sheet: {e}")
+        # Add the note to the batch
+        note_dict = processed_note.to_dict()
+        current_batch['notes'].append(note_dict)
+        print(f"  - Added note to batch: '{processed_note.title}' (ID: {processed_note.note_id})")
         
         # Track successful import
         summary['imported'] += 1
+        
+        # Flush batch if it's full
+        if len(current_batch['notes']) >= batch_size:
+            flush_batch_to_sheet()
         
         # Check if we've reached the max_notes limit
         if max_notes and summary['imported'] >= max_notes:
             print(f"\nReached maximum import limit of {max_notes} notes. Stopping import.")
             break
 
+    # Flush any remaining batch
+    flush_batch_to_sheet()
+    
+    # Image sync phase (if not skipping images)
+    if not no_image_import and session_images:
+        print(f"\n🖼️  Starting image sync phase...")
+        print(f"📊 Syncing {len(session_images)} images from this session")
+        
+        # Get existing images in Drive folder
+        drive_images = set()
+        try:
+            query = f"'{images_folder_id}' in parents and trashed=false"
+            results = drive_service.files().list(q=query, fields="files(name)").execute()
+            drive_images = {file['name'] for file in results.get('files', [])}
+            print(f"📁 Found {len(drive_images)} existing images in Drive folder")
+        except Exception as e:
+            print(f"❌ Error checking Drive folder contents: {e}")
+            if not ignore_errors:
+                raise
+        
+        # Determine which images need to be copied
+        missing_images = session_images - drive_images
+        existing_session_images = session_images & drive_images
+        
+        print(f"📊 Image sync summary:")
+        print(f"  - Session images: {len(session_images)}")
+        print(f"  - Already in Drive: {len(existing_session_images)}")
+        print(f"  - Need to copy: {len(missing_images)}")
+        
+        # Copy missing images
+        if missing_images:
+            print(f"\n📤 Copying {len(missing_images)} images to Drive...")
+            copied_count = 0
+            failed_count = 0
+            
+            for i, filename in enumerate(missing_images, 1):
+                print(f"  [{i}/{len(missing_images)}] Copying {filename}...")
+                
+                try:
+                    # Find the image file in source
+                    if is_gcs:
+                        # Look for the file in GCS
+                        file_blob = None
+                        for blob in blob_map.values():
+                            if os.path.basename(blob.name) == filename:
+                                file_blob = blob
+                                break
+                        
+                        if not file_blob:
+                            print(f"    ❌ File not found in GCS: {filename}")
+                            failed_count += 1
+                            if not ignore_errors:
+                                continue
+                            else:
+                                continue
+                        
+                        # Download to temp file and upload to Drive
+                        local_temp_path = filename
+                        try:
+                            gcs_start = time.time()
+                            file_blob.download_to_filename(local_temp_path)
+                            timing_stats['gcs_total_time'] += time.time() - gcs_start
+                            
+                            drive_start = time.time()
+                            upload_file_to_drive(drive_service, local_temp_path, images_folder_id)
+                            timing_stats['drive_total_time'] += time.time() - drive_start
+                            
+                            copied_count += 1
+                            print(f"    ✅ Copied from GCS: {filename}")
+                        finally:
+                            if os.path.exists(local_temp_path):
+                                os.remove(local_temp_path)
+                    else:
+                        # Look for the file in local directory
+                        local_file_path = None
+                        for root, dirs, files in os.walk(source_path):
+                            if filename in files:
+                                local_file_path = os.path.join(root, filename)
+                                break
+                        
+                        if not local_file_path or not os.path.exists(local_file_path):
+                            print(f"    ❌ File not found locally: {filename}")
+                            failed_count += 1
+                            if not ignore_errors:
+                                continue
+                            else:
+                                continue
+                        
+                        # Upload to Drive
+                        drive_start = time.time()
+                        upload_file_to_drive(drive_service, local_file_path, images_folder_id)
+                        timing_stats['drive_total_time'] += time.time() - drive_start
+                        
+                        copied_count += 1
+                        print(f"    ✅ Copied from local: {filename}")
+                        
+                except Exception as e:
+                    print(f"    ❌ Failed to copy {filename}: {e}")
+                    failed_count += 1
+                    if not ignore_errors:
+                        raise
+            
+            print(f"\n📊 Image sync results:")
+            print(f"  - Copied for newly imported: {copied_count}")
+            print(f"  - Already existing: {len(existing_session_images)}")
+            print(f"  - Failed to copy: {failed_count}")
+        else:
+            print(f"✅ All session images already exist in Drive folder")
+    
     # Print final summary
     print("\n" + "="*60)
     print("IMPORT SUMMARY")
     print("="*60)
     print(f"Notes processed: {summary['processed']}")
     print(f"Notes imported: {summary['imported']}")
+    print(f"Attachments added to existing notes: {summary.get('attachments_added', 0)}")
     print(f"Notes skipped: {summary['skipped']}")
     print(f"Duplicates: {summary['duplicates']}")
     print(f"Errors: {summary['errors']}")
@@ -777,6 +948,9 @@ Examples:
 
   # Import without uploading images (faster, metadata only)
   python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --no-image-import
+
+  # Import with custom batch size for better performance
+  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --batch-size 50
         """
     )
     parser.add_argument('source_path', 
@@ -787,7 +961,9 @@ Examples:
                        help='Continue processing even if schema validation fails (default: exit on first error)')
     parser.add_argument('--no-image-import', action='store_true',
                        help='Skip uploading images to Google Drive (only record filenames in sheet)')
+    parser.add_argument('--batch-size', type=int, default=20,
+                       help='Number of notes to process in each batch (default: 20)')
     
     args = parser.parse_args()
     
-    main(args.source_path, args.drive_folder_id, args.max_notes, args.ignore_errors, args.no_image_import)
+    main(args.source_path, args.drive_folder_id, args.max_notes, args.ignore_errors, args.no_image_import, args.batch_size)
