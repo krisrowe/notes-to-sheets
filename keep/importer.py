@@ -151,7 +151,7 @@ def validate_keep_note(note_data, schema=None):
 
 
 
-def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_image_import=False, batch_size=20):
+def main(source_path, drive_folder_id, max_batches=-1, ignore_errors=False, no_image_import=False, batch_size=20):
     # Initialize timing statistics
     timing_stats = {
         'gcs_total_time': 0.0,
@@ -372,9 +372,11 @@ def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_i
 
     print(f"Found {len(json_files)} JSON note files.")
     
-    # Note: max_notes limit will be applied after successful imports, not to the file list
-    if max_notes:
-        print(f"Will limit import to {max_notes} successfully imported notes.")
+    # Note: max_batches limit will be applied after successful imports, not to the file list
+    if max_batches > 0:
+        print(f"Will limit import to {max_batches} batches ({max_batches * batch_size} notes max).")
+    else:
+        print(f"No batch limit set - will process all notes.")
     
     print(f"Using batch size: {batch_size} notes per batch")
     print(f"Processing mode: {'Metadata only (no images)' if no_image_import else 'Full import with image sync'}")
@@ -718,11 +720,11 @@ def main(source_path, drive_folder_id, max_notes=None, ignore_errors=False, no_i
         # Flush batch if it's full
         if len(current_batch['notes']) >= batch_size:
             flush_batch_to_sheet()
-        
-        # Check if we've reached the max_notes limit
-        if max_notes and summary['imported'] >= max_notes:
-            print(f"\nReached maximum import limit of {max_notes} notes. Stopping import.")
-            break
+            
+            # Check if we've reached the max_batches limit
+            if max_batches > 0 and total_batches >= max_batches:
+                print(f"\nReached maximum batch limit of {max_batches} batches. Stopping import.")
+                break
 
     # Flush any remaining batch
     flush_batch_to_sheet()
@@ -943,27 +945,31 @@ Examples:
   # Import from local directory
   python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf
 
-  # Import with limits and error handling
-  python keep/importer.py gs://keep-notes-takeout-bucket 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --max-notes 100 --ignore-errors
+  # Import with batch limits and error handling
+  python keep/importer.py gs://keep-notes-takeout-bucket 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --max-batches 5 --ignore-errors
 
   # Import without uploading images (faster, metadata only)
   python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --no-image-import
 
   # Import with custom batch size for better performance
   python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --batch-size 50
+
+  # Import with both batch size and count limits
+  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --batch-size 30 --max-batches 10
         """
     )
     parser.add_argument('source_path', 
                        help='Source path: gs://bucket-name for GCS or /path/to/directory for local files')
     parser.add_argument('drive_folder_id', help='ID of the Google Drive folder to import into')
-    parser.add_argument('--max-notes', type=int, help='Maximum number of notes to import (for trial runs)')
+    parser.add_argument('--max-batches', type=int, default=-1,
+                       help='Maximum number of batches to process (default: unlimited, -1)')
+    parser.add_argument('--batch-size', type=int, default=20,
+                       help='Number of notes to process in each batch (default: 20)')
     parser.add_argument('--ignore-errors', action='store_true', 
                        help='Continue processing even if schema validation fails (default: exit on first error)')
     parser.add_argument('--no-image-import', action='store_true',
                        help='Skip uploading images to Google Drive (only record filenames in sheet)')
-    parser.add_argument('--batch-size', type=int, default=20,
-                       help='Number of notes to process in each batch (default: 20)')
     
     args = parser.parse_args()
     
-    main(args.source_path, args.drive_folder_id, args.max_notes, args.ignore_errors, args.no_image_import, args.batch_size)
+    main(args.source_path, args.drive_folder_id, args.max_batches, args.ignore_errors, args.no_image_import, args.batch_size)

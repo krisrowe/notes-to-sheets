@@ -168,8 +168,8 @@ python keep/importer.py gs://your-bucket-name your-folder-id --no-image-import
 # Import all notes from local directory
 python keep/importer.py ../keep-notes-takeout your-folder-id
 
-# Import only first 10 notes from local directory (for trial runs)
-python keep/importer.py ../keep-notes-takeout your-folder-id --max-notes 10
+# Import only first 2 batches from local directory (for trial runs)
+python keep/importer.py ../keep-notes-takeout your-folder-id --max-batches 2
 
 # Import from local directory with error tolerance
 python keep/importer.py ../keep-notes-takeout your-folder-id --ignore-errors
@@ -179,6 +179,9 @@ python keep/importer.py ../keep-notes-takeout your-folder-id --no-image-import
 
 # Import with custom batch size for better performance
 python keep/importer.py ../keep-notes-takeout your-folder-id --batch-size 50
+
+# Import with both batch size and count limits
+python keep/importer.py ../keep-notes-takeout your-folder-id --batch-size 30 --max-batches 10
 ```
 
 **Where to find these values:**
@@ -208,14 +211,14 @@ python keep/importer.py ../keep-notes-takeout 1ABC123DEF456GHI789JKL012MNO345PQR
 
 The importer supports several optional flags to customize the import process:
 
-- **`--max-notes N`**: Limit import to the first N successfully imported notes (useful for testing)
+- **`--max-batches N`**: Limit import to the first N batches (default: unlimited, -1)
+- **`--batch-size N`**: Number of notes to process in each batch (default: 20, higher values for better performance)
 - **`--ignore-errors`**: Continue processing even if schema validation fails (skips problematic notes)
 - **`--no-image-import`**: Skip uploading images to Google Drive (only record filenames in sheet)
-- **`--batch-size N`**: Number of notes to process in each batch (default: 20, higher values for better performance)
 
 **Performance Note**: Using `--no-image-import` can significantly speed up imports by eliminating Google Drive upload overhead, especially useful for large imports or when you only need the note metadata. The batching system reduces API calls by ~95% compared to individual row uploads.
 
-**Batching**: The importer uses batch processing to improve performance. Notes are processed in batches (default: 20) and uploaded to Google Sheets in chunks, reducing API rate limiting issues. Use `--batch-size` to adjust the batch size for your needs.
+**Batching**: The importer uses batch processing to improve performance. Notes are processed in batches (default: 20) and uploaded to Google Sheets in chunks, reducing API rate limiting issues. Use `--batch-size` to adjust the batch size and `--max-batches` to limit the number of batches processed.
 
 **Resilient & Repeatable**: The script is designed to be safely re-run multiple times. It detects existing notes and attachments, skipping complete duplicates while adding missing attachments to incomplete notes. This handles cases where previous runs may have partially failed (e.g., notes written but attachments failed due to API limits).
 
