@@ -9,7 +9,7 @@ processing:
   # error: Exit if note has non-DEFAULT color
   # skip: Skip notes with non-DEFAULT colors
   # ignore: Process note normally, don't add color labels
-  color: "error"
+  color: "label"
 
   # Trashed notes processing - how to handle trashed notes
   # label: Add "Trashed" label to trashed notes

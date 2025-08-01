@@ -324,7 +324,6 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
     summary = {
         'processed': 0,
         'imported': 0,
-        'skipped': 0,
         'duplicates': 0,
         'errors': 0,
         'totals': {},
@@ -351,7 +350,6 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
                     
                     if ignore_errors:
                         print("  - Skipping note due to validation error (--ignore-errors flag set)")
-                        summary['skipped'] += 1
                         continue
                     else:
                         print("  - Exiting due to schema validation error (use --ignore-errors to continue)")
@@ -359,7 +357,6 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
                     
         except Exception as e:
             print(f"  - Could not parse JSON file {blob.name}. Skipping. Error: {e}")
-            summary['skipped'] += 1
             continue
 
         # Process the note using the canonical processor
@@ -373,7 +370,6 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
             
             # Track skip reasons
             if processed_note is None:
-                summary['skipped'] += 1
                 # Determine skip reason for reporting
                 if note_data.get('isTrashed', False):
                     summary['skipped']['trashed'] = summary['skipped'].get('trashed', 0) + 1
@@ -402,7 +398,6 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
             print(f"  - Processing error: {e}")
             if ignore_errors:
                 print("  - Skipping note due to processing error (--ignore-errors flag set)")
-                summary['skipped'] += 1
                 continue
             else:
                 print("  - Exiting due to processing error (use --ignore-errors to continue)")
