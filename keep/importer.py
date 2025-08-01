@@ -151,6 +151,14 @@ def validate_keep_note(note_data, schema=None):
 
 
 def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
+    # Initialize timing statistics
+    timing_stats = {
+        'gcs_total_time': 0.0,
+        'sheets_total_time': 0.0,
+        'drive_total_time': 0.0,
+        'processing_total_time': 0.0,
+        'start_time': time.time()
+    }
     """
     Main function to run the export process from GCS Takeout to Sheets.
     """
@@ -290,7 +298,9 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
 
     # Get all files from the GCS bucket.
     print(f"Fetching files from GCS bucket '{bucket_name}'...")
+    gcs_start = time.time()
     blobs = storage_client.list_blobs(bucket_name)
+    timing_stats['gcs_total_time'] += time.time() - gcs_start
     
     # Create a dictionary mapping file paths to blobs for quick lookup
     blob_map = {blob.name: blob for blob in blobs}
@@ -302,10 +312,9 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
 
     print(f"Found {len(json_files)} JSON note files.")
     
-    # Apply max_notes limit if specified
+    # Note: max_notes limit will be applied after successful imports, not to the file list
     if max_notes:
-        json_files = json_files[:max_notes]
-        print(f"Limiting import to first {max_notes} notes for trial run.")
+        print(f"Will limit import to {max_notes} successfully imported notes.")
     
     # Check for existing imported notes to avoid duplicates
     existing_note_ids = set()
@@ -337,7 +346,9 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
         summary['processed'] += 1
         
         try:
+            gcs_start = time.time()
             note_data = json.loads(blob.download_as_text())
+            timing_stats['gcs_total_time'] += time.time() - gcs_start
             
             # Validate against JSON schema if available
             if schema:
@@ -361,7 +372,9 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
 
         # Process the note using the canonical processor
         try:
+            processing_start = time.time()
             processed_note, ignore_actions = process_note(note_data, config)
+            timing_stats['processing_total_time'] += time.time() - processing_start
             
             # Track ignore actions
             for action_type, count in ignore_actions.items():
@@ -464,18 +477,24 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
             # Download file to a temporary local file
             local_temp_path = os.path.basename(file_path_in_gcs)
             try:
+                gcs_start = time.time()
                 file_blob.download_to_filename(local_temp_path)
+                timing_stats['gcs_total_time'] += time.time() - gcs_start
                 print(f"    - Downloaded {file_path_in_gcs} from GCS.")
                 
                 # Upload to the single images folder
+                drive_start = time.time()
                 upload_file_to_drive(drive_service, local_temp_path, images_folder_id)
+                timing_stats['drive_total_time'] += time.time() - drive_start
                 print(f"    - Uploaded {local_temp_path} to Drive.")
 
                 # Generate attachment ID and add to attachments worksheet
                 attachment_id = generate_appsheet_id(f"{processed_note.note_id}_{file_path_in_gcs}", note_data.get('createdTimestampUsec', ''))
                 try:
                     def add_attachment():
+                        sheets_start = time.time()
                         attachments_worksheet.append_row([attachment_id, processed_note.note_id, local_temp_path, attachment_type, attachment_title])
+                        timing_stats['sheets_total_time'] += time.time() - sheets_start
                     
                     exponential_backoff_with_retry(add_attachment)
                     time.sleep(0.1)  # Small delay to avoid rate limiting
@@ -508,7 +527,9 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
                 attachment_id = generate_appsheet_id(f"{processed_note.note_id}_{url}", note_data.get('createdTimestampUsec', ''))
                 try:
                     def add_link():
+                        sheets_start = time.time()
                         attachments_worksheet.append_row([attachment_id, processed_note.note_id, url, "Link", title])
+                        timing_stats['sheets_total_time'] += time.time() - sheets_start
                     
                     exponential_backoff_with_retry(add_link)
                     time.sleep(0.1)  # Small delay to avoid rate limiting
@@ -520,6 +541,7 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
         try:
             def add_note():
                 note_dict = processed_note.to_dict()
+                sheets_start = time.time()
                 notes_worksheet.append_row([
                     note_dict['ID'], 
                     note_dict['Title'], 
@@ -528,6 +550,7 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
                     note_dict['Created Date'], 
                     note_dict['Modified Date']
                 ])
+                timing_stats['sheets_total_time'] += time.time() - sheets_start
             
             exponential_backoff_with_retry(add_note)
             print(f"  - Added note to sheet: '{processed_note.title}' (ID: {processed_note.note_id})")
@@ -538,6 +561,11 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
         
         # Track successful import
         summary['imported'] += 1
+        
+        # Check if we've reached the max_notes limit
+        if max_notes and summary['imported'] >= max_notes:
+            print(f"\nReached maximum import limit of {max_notes} notes. Stopping import.")
+            break
 
     # Print final summary
     print("\n" + "="*60)
@@ -578,6 +606,18 @@ def main(bucket_name, drive_folder_id, max_notes=None, ignore_errors=False):
         print(f"\nHTML content processing: Skipping notes with HTML content")
     elif html_action == 'error':
         print(f"\nHTML content processing: Exiting on HTML content (error action)")
+    
+    # Calculate total time and timing statistics
+    total_time = time.time() - timing_stats['start_time']
+    print(f"\n" + "="*60)
+    print("TIMING STATISTICS")
+    print("="*60)
+    print(f"Total execution time: {total_time:.2f} seconds")
+    print(f"GCS operations: {timing_stats['gcs_total_time']:.2f} seconds ({timing_stats['gcs_total_time']/total_time*100:.1f}%)")
+    print(f"Google Sheets operations: {timing_stats['sheets_total_time']:.2f} seconds ({timing_stats['sheets_total_time']/total_time*100:.1f}%)")
+    print(f"Google Drive operations: {timing_stats['drive_total_time']:.2f} seconds ({timing_stats['drive_total_time']/total_time*100:.1f}%)")
+    print(f"Note processing: {timing_stats['processing_total_time']:.2f} seconds ({timing_stats['processing_total_time']/total_time*100:.1f}%)")
+    print(f"Other operations: {total_time - timing_stats['gcs_total_time'] - timing_stats['sheets_total_time'] - timing_stats['drive_total_time'] - timing_stats['processing_total_time']:.2f} seconds")
     
     print("\nImport complete!")
 
