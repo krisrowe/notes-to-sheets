@@ -20,20 +20,19 @@ This script automates importing your Google Keep notes from a Google Takeout exp
 
 ### 1. Setup Environment
 ```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# (Optional) Set up user configuration
-cp config.ini.example config.ini
-# Edit config.ini with your settings
+# Install dependencies
+make install
 ```
 
-### 2. Run Import
+### 2. Configure and Run Import
 ```bash
-# Using module syntax (recommended)
-python -m keep.importer --max-batches 1
+# Interactive setup (prompts for source path and target folder ID)
+make setup
 
-# Or with command line arguments
+# Test with single batch
+make import-batch
+
+# Or manually with command line arguments
 python -m keep.importer ../keep-notes-takeout your-folder-id --max-batches 1
 ```
 
@@ -254,6 +253,15 @@ The importer supports several optional flags to customize the import process:
 - **`--wipe`**: Soft wipe - clear tabs before importing (preserves sheet for revision history)
 - **`--wipe-hard`**: Hard wipe - delete entire import folder and all contents before importing
 
+### Convenient Make Commands
+
+For common operations, use these convenient make commands:
+
+- **`make setup`**: Interactive setup (prompts for source path and target folder ID)
+- **`make import`**: Run importer using config.ini settings
+- **`make import-batch`**: Run importer for single batch (good for testing)
+- **`make import-chaos`**: Run importer with error tolerance (chaos mode)
+
 **Performance Note**: Using `--no-image-import` can significantly speed up imports by eliminating Google Drive upload overhead, especially useful for large imports or when you only need the note metadata. The batching system reduces API calls by ~95% compared to individual row uploads.
 
 **Batching**: The importer uses batch processing to improve performance. Notes are processed in batches (default: 20) and uploaded to Google Sheets in chunks, reducing API rate limiting issues. Use `--batch-size` to adjust the batch size and `--max-batches` to limit the number of batches processed.
@@ -356,8 +364,9 @@ The project includes a comprehensive test suite to ensure reliability and catch 
 ### Running Tests
 
 ```bash
-# Run all tests (recommended)
+# Run all tests
 cd keep && python -m pytest tests/ -v
+```
 
 # Run specific test files
 cd keep && python -m pytest tests/test_processing.py -v
@@ -592,6 +601,8 @@ If you get errors about unsupported content:
 1. The script will show which note contains the problematic content
 2. You may need to manually review and clean your Google Keep data
 3. Consider removing unsupported content before running the import
+
+
 
 
 
