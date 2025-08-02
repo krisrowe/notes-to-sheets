@@ -49,11 +49,11 @@ def process_notes(
         'processed': 0,
         'imported': 0,
         'duplicates': 0,
+        'skipped': 0,
         'errors': 0,
         'attachments_added': 0,
         'totals': {},
-        'ignored': {},
-        'skipped': {}
+        'ignored': {}
     }
 
     # Initialize batching
@@ -88,6 +88,7 @@ def process_notes(
         # Check if note was successfully loaded and processed
         if processed_note is None:
             print(f"  - Skipped note (failed to load or validate)")
+            summary['skipped'] += 1
             continue
 
         # Check if note exists and if it has any attachments

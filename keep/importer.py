@@ -92,14 +92,14 @@ def main(source_path, target_config, max_batches=None, ignore_errors=None, no_im
         batch_size: Number of notes per batch
         wipe_mode: If 'soft' or 'hard', wipe the target before importing
     """
-    # Get configuration values from centralized config
+    # Get processor configuration values (batch size, paths, etc.)
     final_max_batches = config.get_max_batches()
     final_ignore_errors = config.get_ignore_errors()
     final_no_image_import = config.get_no_image_import()
     final_batch_size = config.get_batch_size()
     
-    # Load processing configuration
-    processing_config = load_config()
+    # Load Keep processing configuration (how to handle trashed notes, colors, etc.)
+    keep_config = load_config()
     print("✅ Configuration loaded")
 
     # Load JSON schema for validation
@@ -134,15 +134,15 @@ def main(source_path, target_config, max_batches=None, ignore_errors=None, no_im
     # Create schema validator callback
 
 
-    # Create note source with validation and config
-    note_source = KeepNoteSource(source_files, schema, config)
+    # Create note source with validation and Keep config
+    note_source = KeepNoteSource(source_files, schema, keep_config)
     
     # Process notes using the execution processor
     summary = process_notes(
         note_source=note_source,
         target=target,
         existing_notes=existing_notes,
-        config=processing_config,
+        config=keep_config,
         max_batches=final_max_batches,
         batch_size=final_batch_size,
         ignore_errors=final_ignore_errors,

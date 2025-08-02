@@ -55,34 +55,22 @@ class KeepNoteSource(NoteSource):
         if filename in self._note_cache:
             return self._note_cache[filename]
         
-        try:
-            # Load JSON content
-            json_content = self.source_files.get_json_content(filename)
-            if not json_content:
-                return None
-            
-            # Validate against schema if provided
-            if self.schema:
-                try:
-                    validate(instance=json_content, schema=self.schema)
-                except ValidationError as e:
-                    print(f"  ❌ Note {filename} failed validation: {e.message}")
-                    return None
-            
-            # Process Keep-specific note data
-            processed_note, ignore_actions = self._process_keep_note(json_content)
-            
-            # Cache the result
-            self._note_cache[filename] = processed_note
-            
-            return processed_note
-            
-        except ValueError as e:
-            # Re-raise ValueError exceptions (for processing configuration errors)
-            raise
-        except Exception as e:
-            print(f"  ❌ Error processing note {filename}: {e}")
-            return None
+        # Load JSON content
+        json_content = self.source_files.get_json_content(filename)
+        if not json_content:
+            raise ValueError(f"Empty or missing JSON content in {filename}")
+        
+        # Validate against schema if provided
+        if self.schema:
+            validate(instance=json_content, schema=self.schema)
+        
+        # Process Keep-specific note data
+        processed_note, ignore_actions = self._process_keep_note(json_content)
+        
+        # Cache the result
+        self._note_cache[filename] = processed_note
+        
+        return processed_note
     
     def reset(self) -> None:
         """Reset the cursor to the beginning of the source."""
