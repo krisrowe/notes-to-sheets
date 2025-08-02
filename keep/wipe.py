@@ -12,10 +12,13 @@ This script will PERMANENTLY DELETE all data created by the Google Keep importer
 ⚠️  WARNING: Make sure you have backups if you need the imported data.
 
 Usage:
-    python keep/destroy_imported_data.py <google-drive-folder-id>
+    python keep/wipe.py <google-drive-folder-id> [--wipe hard]
+    
+    --wipe hard: Delete the entire sheet and folder (default behavior)
+    --wipe soft: Clear only the tabs, keeping the sheet for revision history
 
 Example:
-    python keep/destroy_imported_data.py 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
+    python keep/wipe.py 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms --wipe soft
 """
 
 import os
@@ -23,6 +26,122 @@ import sys
 import argparse
 from googleapiclient.discovery import build
 from google.auth import default
+
+
+def clear_sheet_tabs(drive_service, sheets_service, drive_folder_id):
+    """
+    Clear the tabs in the Google Keep Notes spreadsheet without deleting the sheet.
+    This preserves the sheet for revision history.
+    """
+    print("🧹 CLEARING SHEET TABS - PRESERVING SHEET FOR REVISION HISTORY")
+    print("=" * 60)
+    
+    try:
+        # Find the "Keep Notes Import" folder
+        query = f"'{drive_folder_id}' in parents and name='Keep Notes Import' and mimeType='application/vnd.google-apps.folder'"
+        results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+        keep_import_folders = results.get('files', [])
+        
+        if not keep_import_folders:
+            print("❌ No 'Keep Notes Import' folder found")
+            return
+        
+        keep_import_folder_id = keep_import_folders[0]['id']
+        print(f"🗂️  Found 'Keep Notes Import' folder (ID: {keep_import_folder_id})")
+        
+        # Find the "Google Keep Notes" spreadsheet
+        query = f"'{keep_import_folder_id}' in parents and name='Google Keep Notes' and mimeType='application/vnd.google-apps.spreadsheet'"
+        results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+        spreadsheets = results.get('files', [])
+        
+        if not spreadsheets:
+            print("❌ No 'Google Keep Notes' spreadsheet found")
+            return
+        
+        spreadsheet_id = spreadsheets[0]['id']
+        print(f"📊 Found 'Google Keep Notes' spreadsheet (ID: {spreadsheet_id})")
+        
+        # Get the spreadsheet to see what tabs exist
+        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = spreadsheet.get('sheets', [])
+        
+        print(f"📋 Found {len(sheets)} tabs to clear:")
+        
+        # Clear each tab by replacing all content with just the header row
+        for sheet in sheets:
+            sheet_name = sheet['properties']['title']
+            sheet_id = sheet['properties']['sheetId']
+            print(f"    - {sheet_name}")
+            
+            # Determine headers based on sheet name
+            if sheet_name == 'Notes':
+                headers = [['ID', 'Title', 'Content', 'Created Date', 'Modified Date', 'Labels']]
+            elif sheet_name == 'Attachments':
+                headers = [['ID', 'Note', 'File', 'Type', 'Title']]
+            else:
+                headers = [['Data']]  # Generic header for unknown sheets
+            
+            # Clear the sheet by replacing all content with headers
+            try:
+                sheets_service.spreadsheets().values().clear(
+                    spreadsheetId=spreadsheet_id,
+                    range=sheet_name
+                ).execute()
+                
+                # Add headers back
+                sheets_service.spreadsheets().values().update(
+                    spreadsheetId=spreadsheet_id,
+                    range=f"{sheet_name}!A1",
+                    valueInputOption='RAW',
+                    body={'values': headers}
+                ).execute()
+                
+                print(f"      ✅ Cleared {sheet_name}")
+            except Exception as e:
+                print(f"      ❌ Failed to clear {sheet_name}: {e}")
+        
+        # Delete the Note_Images folder if it exists
+        query = f"'{keep_import_folder_id}' in parents and name='Note_Images' and mimeType='application/vnd.google-apps.folder'"
+        results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+        image_folders = results.get('files', [])
+        
+        if image_folders:
+            image_folder_id = image_folders[0]['id']
+            print(f"🖼️  Found 'Note_Images' folder (ID: {image_folder_id})")
+            
+            # Get all files in the images folder
+            query = f"'{image_folder_id}' in parents"
+            results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+            image_files = results.get('files', [])
+            
+            print(f"💥 Found {len(image_files)} image files to delete:")
+            
+            for file_info in image_files:
+                file_id = file_info['id']
+                file_name = file_info['name']
+                print(f"    - {file_name}")
+                
+                try:
+                    drive_service.files().delete(fileId=file_id).execute()
+                    print(f"      ✅ Deleted {file_name}")
+                except Exception as e:
+                    print(f"      ❌ Failed to delete {file_name}: {e}")
+            
+            # Delete the images folder itself
+            try:
+                drive_service.files().delete(fileId=image_folder_id).execute()
+                print(f"🖼️  ✅ Deleted 'Note_Images' folder")
+            except Exception as e:
+                print(f"🖼️  ❌ Failed to delete 'Note_Images' folder: {e}")
+        else:
+            print("🖼️  No 'Note_Images' folder found")
+            
+        print("=" * 60)
+        print(f"🧹 CLEARING COMPLETE: Sheet tabs cleared, images deleted")
+        print("📊 Sheet preserved for revision history")
+        
+    except Exception as e:
+        print(f"💥 ERROR during clearing: {e}")
 
 
 def destroy_imported_resources(drive_service, drive_folder_id):
@@ -98,38 +217,69 @@ def main():
         """
     )
     parser.add_argument('drive_folder_id', help='ID of the Google Drive folder containing imported data')
+    parser.add_argument('--wipe', choices=['soft', 'hard'], default='hard',
+                       help='Wipe mode: soft=clear tabs only (preserves sheet), hard=delete everything (default)')
     
     args = parser.parse_args()
     
-    print("🔥 DESTROY IMPORTED DATA - DANGEROUS OPERATION")
-    print("=" * 60)
-    print("This script will PERMANENTLY DELETE all data created by the Google Keep importer.")
-    print("")
-    print("What will be destroyed:")
-    print("  - 'Keep Notes Import' folder and ALL its contents")
-    print("  - 'Google Keep Notes' spreadsheet")
-    print("  - 'Note_Images' folder and ALL uploaded images")
-    print("")
-    print("⚠️  WARNING: This operation is IRREVERSIBLE!")
-    print("⚠️  WARNING: This will NOT affect your original Google Keep data")
-    print("⚠️  WARNING: Only imported copies will be deleted")
-    print("")
+    if args.wipe == 'soft':
+        print("🧹 SOFT WIPE - CLEAR SHEET TABS ONLY")
+        print("=" * 60)
+        print("This will clear the tabs in the Google Keep Notes spreadsheet")
+        print("and delete the Note_Images folder, but preserve the sheet for revision history.")
+        print("")
+        print("What will be cleared:")
+        print("  - All data in 'Notes' and 'Attachments' tabs")
+        print("  - 'Note_Images' folder and ALL uploaded images")
+        print("")
+        print("What will be preserved:")
+        print("  - 'Google Keep Notes' spreadsheet (for revision history)")
+        print("  - 'Keep Notes Import' folder structure")
+        print("")
+    else:
+        print("🔥 DESTROY IMPORTED DATA - DANGEROUS OPERATION")
+        print("=" * 60)
+        print("This script will PERMANENTLY DELETE all data created by the Google Keep importer.")
+        print("")
+        print("What will be destroyed:")
+        print("  - 'Keep Notes Import' folder and ALL its contents")
+        print("  - 'Google Keep Notes' spreadsheet")
+        print("  - 'Note_Images' folder and ALL uploaded images")
+        print("")
+        print("⚠️  WARNING: This operation is IRREVERSIBLE!")
+        print("⚠️  WARNING: This will NOT affect your original Google Keep data")
+        print("⚠️  WARNING: Only imported copies will be deleted")
+        print("")
     
     # Single confirmation
-    response = input("Are you ABSOLUTELY SURE you want to proceed? Type 'DESTROY' to continue: ")
-    if response != 'DESTROY':
-        print("Destruction cancelled. Your data is safe.")
-        sys.exit(0)
+    if args.wipe == 'soft':
+        response = input("Are you sure you want to clear the sheet tabs? Type 'CLEAR' to continue: ")
+        if response != 'CLEAR':
+            print("Clearing cancelled. Your data is safe.")
+            sys.exit(0)
+    else:
+        response = input("Are you ABSOLUTELY SURE you want to proceed? Type 'DESTROY' to continue: ")
+        if response != 'DESTROY':
+            print("Destruction cancelled. Your data is safe.")
+            sys.exit(0)
     
     print("")
-    print("💥 PROCEEDING WITH DESTRUCTION...")
+    if args.wipe == 'soft':
+        print("🧹 PROCEEDING WITH CLEARING...")
+    else:
+        print("💥 PROCEEDING WITH DESTRUCTION...")
     print("=" * 60)
     
-    # Authenticate and destroy
+    # Authenticate and perform operation
     try:
-        creds, _ = default(scopes=['https://www.googleapis.com/auth/drive'])
+        creds, _ = default(scopes=['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets'])
         drive_service = build('drive', 'v3', credentials=creds)
-        destroy_imported_resources(drive_service, args.drive_folder_id)
+        
+        if args.wipe == 'soft':
+            sheets_service = build('sheets', 'v4', credentials=creds)
+            clear_sheet_tabs(drive_service, sheets_service, args.drive_folder_id)
+        else:
+            destroy_imported_resources(drive_service, args.drive_folder_id)
     except Exception as e:
         print(f"💥 ERROR: Failed to authenticate or access Drive: {e}")
         sys.exit(1)

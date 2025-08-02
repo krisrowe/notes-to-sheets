@@ -76,7 +76,7 @@ def load_keep_schema():
 
 
 
-def main(source_path, target_config, max_batches=-1, ignore_errors=False, no_image_import=False, batch_size=20):
+def main(source_path, target_config, max_batches=-1, ignore_errors=False, no_image_import=False, batch_size=20, wipe_mode=None):
     """
     Main function to run the export process using abstract source and target interfaces.
     
@@ -87,6 +87,7 @@ def main(source_path, target_config, max_batches=-1, ignore_errors=False, no_ima
         ignore_errors: Whether to continue on errors
         no_image_import: Whether to skip image uploads
         batch_size: Number of notes per batch
+        wipe_mode: If 'soft' or 'hard', wipe the target before importing
     """
     # Load configuration
     config = load_config()
@@ -102,7 +103,18 @@ def main(source_path, target_config, max_batches=-1, ignore_errors=False, no_ima
     # Create source file manager based on source path
     source_files = create_source_manager(source_path)
     
-    # Create target manager based on target config
+    # Handle wipe mode if specified
+    if wipe_mode:
+        print(f"🧹 WIPE MODE: {wipe_mode.upper()}")
+        if wipe_mode == 'soft':
+            print("Clearing sheet tabs and deleting images folder...")
+            wipe_target_soft(target_config)
+        elif wipe_mode == 'hard':
+            print("Deleting entire import folder and all contents...")
+            wipe_target_hard(target_config)
+        print("Wipe complete!")
+    
+    # Create target manager based on target config (after wipe operations)
     target = create_target_manager(target_config)
     
     # Get existing notes from target
@@ -131,6 +143,130 @@ def main(source_path, target_config, max_batches=-1, ignore_errors=False, no_ima
     print("\nImport complete!")
 
 
+def wipe_target_soft(target_config):
+    """Wipe target using soft mode - clear tabs and delete images folder."""
+    from googleapiclient.discovery import build
+    from google.auth import default
+    
+    try:
+        creds, _ = default(scopes=['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets'])
+        drive_service = build('drive', 'v3', credentials=creds)
+        sheets_service = build('sheets', 'v4', credentials=creds)
+        
+        # Find the "Keep Notes Import" folder
+        query = f"'{target_config}' in parents and name='Keep Notes Import' and mimeType='application/vnd.google-apps.folder'"
+        results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+        keep_import_folders = results.get('files', [])
+        
+        if not keep_import_folders:
+            print("❌ No 'Keep Notes Import' folder found")
+            return
+        
+        keep_import_folder_id = keep_import_folders[0]['id']
+        
+        # Find the "Google Keep Notes" spreadsheet
+        query = f"'{keep_import_folder_id}' in parents and name='Google Keep Notes' and mimeType='application/vnd.google-apps.spreadsheet'"
+        results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+        spreadsheets = results.get('files', [])
+        
+        if not spreadsheets:
+            print("❌ No 'Google Keep Notes' spreadsheet found")
+            return
+        
+        spreadsheet_id = spreadsheets[0]['id']
+        
+        # Get the spreadsheet to see what tabs exist
+        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = spreadsheet.get('sheets', [])
+        
+        # Clear each tab by replacing all content with just the header row
+        for sheet in sheets:
+            sheet_name = sheet['properties']['title']
+            
+            # Determine headers based on sheet name
+            if sheet_name == 'Note':
+                headers = [['ID', 'Title', 'Content', 'Created Date', 'Modified Date', 'Labels']]
+            elif sheet_name == 'Attachment':
+                headers = [['ID', 'Note', 'File', 'Type', 'Title']]
+            else:
+                headers = [['Data']]  # Generic header for unknown sheets
+            
+            # Clear the sheet by replacing all content with headers
+            sheets_service.spreadsheets().values().clear(
+                spreadsheetId=spreadsheet_id,
+                range=sheet_name
+            ).execute()
+            
+            # Add headers back
+            sheets_service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=f"{sheet_name}!A1",
+                valueInputOption='RAW',
+                body={'values': headers}
+            ).execute()
+        
+        # Delete the Note_Images folder if it exists
+        query = f"'{keep_import_folder_id}' in parents and name='Note_Images' and mimeType='application/vnd.google-apps.folder'"
+        results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+        image_folders = results.get('files', [])
+        
+        if image_folders:
+            image_folder_id = image_folders[0]['id']
+            
+            # Get all files in the images folder
+            query = f"'{image_folder_id}' in parents"
+            results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+            image_files = results.get('files', [])
+            
+            for file_info in image_files:
+                file_id = file_info['id']
+                drive_service.files().delete(fileId=file_id).execute()
+            
+            # Delete the images folder itself
+            drive_service.files().delete(fileId=image_folder_id).execute()
+        
+        print("✅ Soft wipe completed")
+        
+    except Exception as e:
+        print(f"❌ Error during soft wipe: {e}")
+
+
+def wipe_target_hard(target_config):
+    """Wipe target using hard mode - delete entire import folder."""
+    from googleapiclient.discovery import build
+    from google.auth import default
+    
+    try:
+        creds, _ = default(scopes=['https://www.googleapis.com/auth/drive'])
+        drive_service = build('drive', 'v3', credentials=creds)
+        
+        # Find the "Keep Notes Import" folder
+        query = f"'{target_config}' in parents and name='Keep Notes Import' and mimeType='application/vnd.google-apps.folder'"
+        results = drive_service.files().list(q=query, fields="files(id,name)").execute()
+        keep_import_folders = results.get('files', [])
+        
+        if not keep_import_folders:
+            print("❌ No 'Keep Notes Import' folder found")
+            return
+        
+        keep_import_folder_id = keep_import_folders[0]['id']
+        
+        # Find all files and folders within the Keep Notes Import folder
+        query = f"'{keep_import_folder_id}' in parents"
+        results = drive_service.files().list(q=query, fields="files(id,name,mimeType)").execute()
+        files_to_destroy = results.get('files', [])
+        
+        for file_info in files_to_destroy:
+            file_id = file_info['id']
+            drive_service.files().delete(fileId=file_id).execute()
+        
+        # Destroy the Keep Notes Import folder itself
+        drive_service.files().delete(fileId=keep_import_folder_id).execute()
+        
+        print("✅ Hard wipe completed")
+        
+    except Exception as e:
+        print(f"❌ Error during hard wipe: {e}")
 
 
 
@@ -200,6 +336,8 @@ def get_existing_notes_from_target(target):
         return existing_notes
     except Exception as e:
         print(f"Could not check existing notes: {e}")
+        import traceback
+        traceback.print_exc()
         return {}
 
 
@@ -229,6 +367,12 @@ Examples:
 
   # Import with both batch size and count limits
   python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --batch-size 30 --max-batches 10
+
+  # Import with soft wipe (clear tabs, preserve sheet for revision history)
+  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --wipe
+
+  # Import with hard wipe (delete everything and start fresh)
+  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --wipe-hard
         """
     )
     parser.add_argument('source_path', 
@@ -242,7 +386,18 @@ Examples:
                        help='Continue processing even if schema validation fails (default: exit on first error)')
     parser.add_argument('--no-image-import', action='store_true',
                        help='Skip uploading images (only record filenames in target)')
+    parser.add_argument('--wipe', action='store_true', default=False,
+                       help='Wipe target before importing (soft wipe: clear tabs only, preserve sheet for revision history)')
+    parser.add_argument('--wipe-hard', action='store_true', default=False,
+                       help='Hard wipe: delete entire import folder and all contents')
     
     args = parser.parse_args()
     
-    main(args.source_path, args.target_config, args.max_batches, args.ignore_errors, args.no_image_import, args.batch_size)
+    # Determine wipe mode
+    wipe_mode = None
+    if args.wipe_hard:
+        wipe_mode = 'hard'
+    elif args.wipe:
+        wipe_mode = 'soft'
+    
+    main(args.source_path, args.target_config, args.max_batches, args.ignore_errors, args.no_image_import, args.batch_size, wipe_mode)

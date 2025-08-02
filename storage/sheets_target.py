@@ -132,11 +132,15 @@ class GoogleSheetsTarget:
         
         # Set up worksheets
         try:
-            notes_worksheet = spreadsheet.worksheet('Notes')
-            print("Found existing Notes worksheet")
+            notes_worksheet = spreadsheet.worksheet('Note')
+            print("Found existing Note worksheet")
         except:
+            # Rename the first worksheet to 'Note'
             notes_worksheet = spreadsheet.sheet1
-            print("Using first worksheet as Notes")
+            notes_worksheet.update_title('Note')
+            # Add header row to the Note worksheet
+            notes_worksheet.append_row(['ID', 'Title', 'Content', 'Created Date', 'Modified Date', 'Labels'])
+            print("Renamed first worksheet to Note and added headers")
         
         try:
             attachments_worksheet = spreadsheet.worksheet('Attachment')

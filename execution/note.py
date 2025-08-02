@@ -36,11 +36,15 @@ class ProcessedNote:
     def note_id(self) -> str:
         """Calculate a unique ID based on title and created date."""
         import hashlib
-        # Create a unique string from title and created date
+        
+        # Create a unique string from title and formatted date
         unique_string = f"{self.title}_{self.created_date}"
+        
         # Generate MD5 hash and take first 8 characters
         hash_object = hashlib.md5(unique_string.encode())
-        return hash_object.hexdigest()[:8]
+        result = hash_object.hexdigest()[:8]
+        
+        return result
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for sheet writing."""

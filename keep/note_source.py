@@ -134,7 +134,8 @@ class KeepNoteSource(NoteSource):
         content = '\n\n'.join(content_parts) if content_parts else ''
         
         # Process dates
-        created_date = self._format_timestamp(note_data.get('createdTimestampUsec', ''))
+        created_timestamp = note_data.get('createdTimestampUsec', '')
+        created_date = self._format_timestamp(created_timestamp)
         modified_date = self._format_timestamp(note_data.get('userEditedTimestampUsec', ''))
         
         # Create ProcessedNote object early with initial values
@@ -182,15 +183,11 @@ class KeepNoteSource(NoteSource):
         
         # Process all fields with early exit
         for field_name, source_attr, default_value, field_extractor, data_modifier in field_configs:
-            print(f"DEBUG: Processing field '{field_name}' with source_attr '{source_attr}', default_value '{default_value}'")
-            print(f"DEBUG: Config processing action for '{field_name}': {self.config.get('processing', {}).get(field_name, 'MISSING')}")
-            
             self._process_field(note_data, field_name, source_attr, default_value, ignore_actions, processed_note, 
                               field_extractor=field_extractor, data_modifier=data_modifier)
             
             # Early exit if note should be skipped
             if processed_note.skipped:
-                print(f"DEBUG: Field '{field_name}' caused note to be skipped")
                 return None, ignore_actions
         
         # Add user-defined labels
@@ -227,10 +224,8 @@ class KeepNoteSource(NoteSource):
         # Get the field value - either from extractor or direct access
         if field_extractor is not None:
             actual_field_value = field_extractor(note_data)
-            print(f"DEBUG: Using field_extractor for '{field_name}', result: {actual_field_value}")
         else:
             actual_field_value = note_data.get(source_attr, default_value)
-            print(f"DEBUG: Using direct access for '{field_name}', source_attr '{source_attr}', result: {actual_field_value}")
         
         # Check if field has a non-default value
         has_value = actual_field_value != default_value
@@ -243,24 +238,17 @@ class KeepNoteSource(NoteSource):
         if default_value is None:
             has_value = actual_field_value is not None
         
-        print(f"DEBUG: Field '{field_name}' has_value: {has_value}, actual_field_value: {actual_field_value}, default_value: {default_value}")
-        
         if has_value:
             action = self.config['processing'][field_name]
-            print(f"DEBUG: Field '{field_name}' action: {action}")
             
             if action == 'error':
-                print(f"DEBUG: Raising ValueError for field '{field_name}'")
                 raise ValueError(f"Note has {field_name} '{actual_field_value}' but {field_name} processing is set to 'error'")
             elif action == 'skip':
-                print(f"DEBUG: Skipping note due to field '{field_name}'")
                 processed_note.skipped = True # Mark note as skipped
             elif action == 'ignore':
-                print(f"DEBUG: Ignoring field '{field_name}'")
                 # Process normally but ignore this field
                 ignore_actions[field_name] += 1
             elif action == 'label':
-                print(f"DEBUG: Adding label for field '{field_name}'")
                 # Add the label using extractor or default logic
                 if data_modifier is not None:
                     data_modifier(processed_note, actual_field_value, processed_note.labels_list)
