@@ -1,0 +1,28 @@
+{
+  "title": "Multiple Attachments Note",
+  "content": "This is a note with multiple image attachments",
+  "labels": "",
+  "created_date": "2022-08-18 12:08:17",
+  "modified_date": "2022-08-18 12:08:39",
+  "note_id": "2dad089a",
+  "attachments": [
+    {
+      "Type": "Image",
+      "File": "image1.jpg",
+      "Title": "",
+      "note_id": "2dad089a"
+    },
+    {
+      "Type": "Image",
+      "File": "image2.png",
+      "Title": "",
+      "note_id": "2dad089a"
+    },
+    {
+      "Type": "Image",
+      "File": "screenshot.png",
+      "Title": "",
+      "note_id": "2dad089a"
+    }
+  ]
+} 

@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, List, Callable
 from datetime import datetime
 from jsonschema import validate, ValidationError
 from execution.note_source import NoteSource
-from execution.note import ProcessedNote
+from execution.note import ProcessedNote, calculate_note_id
 
 
 class KeepNoteSource(NoteSource):
@@ -138,23 +138,24 @@ class KeepNoteSource(NoteSource):
         created_date = self._format_timestamp(created_timestamp)
         modified_date = self._format_timestamp(note_data.get('userEditedTimestampUsec', ''))
         
-        # Create ProcessedNote object early with initial values
+        # Create ProcessedNote object early
         processed_note = ProcessedNote(
             title=title,
             content=content,
             labels='',  # Will be populated during field processing
             created_date=created_date,
             modified_date=modified_date,
-            has_attachments=False,  # Will be updated after processing attachments
-            attachment_count=0,     # Will be updated after processing attachments
-            attachments=[]          # Will be populated after processing attachments
+            attachments=[]  # Will be populated after processing attachments
         )
         
+        # Calculate and assign note_id
+        note_id = calculate_note_id(title, created_date)
+        processed_note.note_id = note_id
+        
         # Process attachments using the note's calculated ID
+        # This needs to happen after note_id is set so attachments can reference it
         attachments = self._process_attachments(note_data, processed_note)
         processed_note.attachments = attachments
-        processed_note.has_attachments = len(attachments) > 0
-        processed_note.attachment_count = len(attachments)
         
         # Add a labels list and skipped flag to the note for processing
         processed_note.labels_list = []  # Temporary list for building labels

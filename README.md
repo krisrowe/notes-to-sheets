@@ -1,6 +1,15 @@
 # notes-to-sheets
 Facilitates importing of notes from tools like Google Keep and Evernote into Google Sheets.
 
+## Project Structure
+
+The project is organized into several modules:
+
+- **`keep/`**: Google Keep specific importer and processing logic
+- **`execution/`**: Core note processing and transformation logic
+- **`storage/`**: Source and target implementations for data I/O
+- **`tests/`**: Integration tests for note conversion
+
 # Google Keep Importer
 
 This script automates importing your Google Keep notes from a Google Takeout export stored in Google Cloud Storage (GCS) into a Google Sheet. It handles associated images by saving them to a dedicated folder in your Google Drive and linking to them from the sheet. This creates a clean, organized, and AppSheet-friendly representation of your notes.
@@ -109,7 +118,7 @@ pip install -r requirements.txt
 4. **Execute**: Run the script from your terminal with your bucket name and folder ID:
 
 ```bash
-python keep/importer.py gs://<your-gcs-bucket-name> <google-drive-folder-id> [--max-notes N] [--ignore-errors]
+python keep/importer.py gs://<your-gcs-bucket-name> <google-drive-folder-id> [--max-batches N] [--ignore-errors]
 ```
 
 ### Option 2: Import from Local Directory (Recommended for Large Imports)
@@ -127,7 +136,7 @@ gsutil -m cp gs://your-bucket-name/* keep-notes-takeout/
 
 2. **Import from Local Directory**:
 ```bash
-python keep/importer.py keep-notes-takeout <google-drive-folder-id> [--max-notes N] [--ignore-errors]
+python keep/importer.py keep-notes-takeout <google-drive-folder-id> [--max-batches N] [--ignore-errors]
 ```
 
 **Performance Note**: Local file access is significantly faster than GCS for large imports, as it eliminates network latency for each file read operation.
@@ -153,8 +162,8 @@ For large imports (1000+ notes), local file access typically provides 3-5x faste
 # Import all notes from GCS (exits on first schema validation error)
 python keep/importer.py gs://your-bucket-name your-folder-id
 
-# Import only first 10 notes from GCS (for trial runs)
-python keep/importer.py gs://your-bucket-name your-folder-id --max-notes 10
+# Import only first 10 batches from GCS (for trial runs)
+python keep/importer.py gs://your-bucket-name your-folder-id --max-batches 10
 
 # Import from GCS with error tolerance (continues on schema validation errors)
 python keep/importer.py gs://your-bucket-name your-folder-id --ignore-errors
@@ -182,6 +191,12 @@ python keep/importer.py ../keep-notes-takeout your-folder-id --batch-size 50
 
 # Import with both batch size and count limits
 python keep/importer.py ../keep-notes-takeout your-folder-id --batch-size 30 --max-batches 10
+
+# Import with soft wipe (clear tabs, preserve sheet for revision history)
+python keep/importer.py ../keep-notes-takeout your-folder-id --wipe
+
+# Import with hard wipe (delete everything and start fresh)
+python keep/importer.py ../keep-notes-takeout your-folder-id --wipe-hard
 ```
 
 **Where to find these values:**
@@ -215,6 +230,8 @@ The importer supports several optional flags to customize the import process:
 - **`--batch-size N`**: Number of notes to process in each batch (default: 20, higher values for better performance)
 - **`--ignore-errors`**: Continue processing even if schema validation fails (skips problematic notes)
 - **`--no-image-import`**: Skip uploading images to Google Drive (only record filenames in sheet)
+- **`--wipe`**: Soft wipe - clear tabs before importing (preserves sheet for revision history)
+- **`--wipe-hard`**: Hard wipe - delete entire import folder and all contents before importing
 
 **Performance Note**: Using `--no-image-import` can significantly speed up imports by eliminating Google Drive upload overhead, especially useful for large imports or when you only need the note metadata. The batching system reduces API calls by ~95% compared to individual row uploads.
 
@@ -318,93 +335,78 @@ The project includes a comprehensive test suite to ensure reliability and catch 
 ### Running Tests
 
 ```bash
-# Run all tests (recommended) - 50 tests total
+# Run all tests (recommended)
 cd keep && python -m pytest tests/ -v
 
 # Run specific test files
-cd keep && python -m pytest tests/test_note_processing.py -v
-cd keep && python -m pytest tests/test_sample_processing.py -v
+cd keep && python -m pytest tests/test_processing.py -v
+cd keep && python -m pytest tests/test_processing_configuration.py -v
 cd keep && python -m pytest tests/test_schema_validation.py -v
-cd keep && python -m pytest tests/test_label_processing.py -v
-cd keep && python -m pytest tests/test_utils.py -v
-cd keep && python -m pytest tests/test_sample_files.py -v
+
+# Run integration tests
+python -m pytest tests/test_conversion.py -v
 
 # Run specific test classes or methods
-cd keep && python -m pytest tests/test_note_processing.py::TestNoteProcessing::test_basic_note_processing -v
+cd keep && python -m pytest tests/test_processing.py::TestProcessing::test_processing_skip_behavior -v
 ```
 
 ### Test Structure
 
 Tests are organized in the `keep/tests/` directory and follow pytest conventions:
 
-- `keep/tests/test_note_processing.py` - Unit tests for the note processing module (23 tests)
-- `keep/tests/test_sample_processing.py` - Integration tests using actual sample JSON files (8 tests)
-- `keep/tests/test_schema_validation.py` - JSON schema validation tests (14 tests)
-- `keep/tests/test_label_processing.py` - Label processing logic tests (5 tests)
-- `keep/tests/test_utils.py` - Utility function tests (8 tests)
-- `keep/tests/test_sample_files.py` - Sample file structure validation tests (13 tests)
+- `keep/tests/test_processing.py` - Note processing and batch processing tests
+- `keep/tests/test_processing_configuration.py` - Configuration and processing action tests
+- `keep/tests/test_schema_validation.py` - JSON schema validation tests
+- `tests/test_conversion.py` - Integration tests for note conversion pipeline
 
 All test files use the `test_` prefix and are automatically discovered by pytest.
 
 ### Test Coverage
 
-The test suite includes **73 tests** organized into the following categories:
+The test suite is organized into the following categories:
 
-**ProcessedNote Class (3 tests):**
-- Object creation and attribute validation
-- Dictionary conversion for sheet output
-- Equality comparison
+**Processing Tests:**
+- Note processing with various configurations
+- Batch processing and limits
+- Skip behavior and error handling
+- Summary counts and statistics
 
-**Note Processing Logic (20 tests):**
-- Basic note processing with default configuration
-- HTML vs plain text content selection
-- Status label processing (Trashed, Pinned, Archived)
-- Custom label name configuration
-- Color label processing (enabled/disabled)
-- Sharing label processing (Received, Shared)
-- Skip logic for trashed/archived notes
-- Attachment counting and processing (single, multiple, missing field)
-- Checklist formatting with checkboxes
-- Timestamp processing and formatting
-- Existing labels processing
-- Color labels processing (RED)
-- Missing attachments field
+**Configuration Tests:**
+- Processing action configurations (label, error, skip, ignore)
+- Attribute-specific configurations (color, trashed, archived, pinned, etc.)
+- Configuration validation and error handling
 
-**Sample File Integration (8 tests):**
-- End-to-end processing using actual sample JSON files
-- Configuration option validation with real data
-- HTML content processing with sample files
-- Skip logic validation with sample files
-
-**Schema Validation (14 tests):**
+**Schema Validation Tests:**
 - JSON schema loading and validation
-- Sample file validation against schema (all sample files)
-- Standalone validation function testing
+- Sample file validation against schema
+- Required attribute validation
+- Unexpected attribute handling
 
-**Label Processing (5 tests):**
-- Basic label extraction and processing
-- Status label conversion (trashed, pinned, archived)
-- Color label handling
-- Combined label processing
-
-**Utility Functions (8 tests):**
-- ID generation consistency and uniqueness
-- Checklist formatting with checkboxes
-- Empty data handling
-- HTML content processing
-
-**Sample File Structure (13 tests):**
-- Sample file structure validation
-- Expected field presence and types
-- Shared note structure validation (owned vs received)
-- Trashed and archived note structure validation
-- Color variation (RED)
-- Multiple attachments structure
-- Missing attachments field
-- Minimal note structure (required fields only)
-- Missing timestamps structure
+**Conversion Tests:**
+- End-to-end note conversion pipeline
+- Attachment handling and processing
+- Label processing and formatting
+- Note ID consistency and generation
 
 The testing framework validates the entire processing pipeline from raw JSON to the canonical `ProcessedNote` representation that gets written to the output sheet.
+
+## Core Modules
+
+### Execution Module (`execution/`)
+
+The execution module contains the core processing logic:
+
+- **`note.py`**: Defines the `ProcessedNote` class and note ID generation logic
+- **`processor.py`**: Core note processing and transformation logic
+- **`note_source.py`**: Abstract interface for note sources
+
+### Storage Module (`storage/`)
+
+The storage module handles data I/O operations:
+
+- **`sheets_target.py`**: Google Sheets integration with retry logic and batch operations
+- **`gcs_source.py`**: Google Cloud Storage source implementation
+- **`local_source.py`**: Local file system source implementation
 
 ### Sample Files
 
