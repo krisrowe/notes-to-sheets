@@ -366,28 +366,28 @@ if __name__ == '__main__':
         epilog="""
 Examples:
   # Import from GCS bucket to Google Sheets
-  python keep/importer.py gs://keep-notes-takeout-bucket 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf
+  python -m keep.importer gs://keep-notes-takeout-bucket 1EXAMPLE123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ
 
   # Import from local directory to Google Sheets
-  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf
+  python -m keep.importer ../keep-notes-takeout 1EXAMPLE123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ
 
   # Import with batch limits and error handling
-  python keep/importer.py gs://keep-notes-takeout-bucket 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --max-batches 5 --ignore-errors
+  python -m keep.importer gs://keep-notes-takeout-bucket 1EXAMPLE123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --max-batches 5 --ignore-errors
 
   # Import without uploading images (faster, metadata only)
-  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --no-image-import
+  python -m keep.importer ../keep-notes-takeout 1EXAMPLE123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --no-image-import
 
   # Import with custom batch size for better performance
-  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --batch-size 50
+  python -m keep.importer ../keep-notes-takeout 1EXAMPLE123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --batch-size 50
 
   # Import with both batch size and count limits
-  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --batch-size 30 --max-batches 10
+  python -m keep.importer ../keep-notes-takeout 1EXAMPLE123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --batch-size 30 --max-batches 10
 
   # Import with soft wipe (clear tabs, preserve sheet for revision history)
-  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --wipe
+  python -m keep.importer ../keep-notes-takeout 1EXAMPLE123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --wipe
 
   # Import with hard wipe (delete everything and start fresh)
-  python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --wipe-hard
+  python -m keep.importer ../keep-notes-takeout 1EXAMPLE123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ --wipe-hard
         """
     )
     

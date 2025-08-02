@@ -16,6 +16,27 @@ This script automates importing your Google Keep notes from a Google Takeout exp
 
 **Note:** This script uses your personal Google account for all operations, ensuring you own all created files.
 
+## Quick Start
+
+### 1. Setup Environment
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# (Optional) Set up user configuration
+cp config.ini.example config.ini
+# Edit config.ini with your settings
+```
+
+### 2. Run Import
+```bash
+# Using module syntax (recommended)
+python -m keep.importer --max-batches 1
+
+# Or with command line arguments
+python -m keep.importer gs://your-bucket your-folder-id --max-batches 1
+```
+
 ## Prerequisites
 
 * A Google Takeout export of your Google Keep data, unzipped and uploaded to a Google Cloud Storage bucket.
@@ -118,7 +139,7 @@ pip install -r requirements.txt
 4. **Execute**: Run the script from your terminal with your bucket name and folder ID:
 
 ```bash
-python keep/importer.py gs://<your-gcs-bucket-name> <google-drive-folder-id> [--max-batches N] [--ignore-errors]
+python -m keep.importer gs://<your-gcs-bucket-name> <google-drive-folder-id> [--max-batches N] [--ignore-errors]
 ```
 
 ### Option 2: Import from Local Directory (Recommended for Large Imports)
@@ -136,7 +157,7 @@ gsutil -m cp gs://your-bucket-name/* keep-notes-takeout/
 
 2. **Import from Local Directory**:
 ```bash
-python keep/importer.py keep-notes-takeout <google-drive-folder-id> [--max-batches N] [--ignore-errors]
+python -m keep.importer keep-notes-takeout <google-drive-folder-id> [--max-batches N] [--ignore-errors]
 ```
 
 **Performance Note**: Local file access is significantly faster than GCS for large imports, as it eliminates network latency for each file read operation.
@@ -160,43 +181,43 @@ For large imports (1000+ notes), local file access typically provides 3-5x faste
 **GCS Import:**
 ```bash
 # Import all notes from GCS (exits on first schema validation error)
-python keep/importer.py gs://your-bucket-name your-folder-id
+python -m keep.importer gs://your-bucket-name your-folder-id
 
 # Import only first 10 batches from GCS (for trial runs)
-python keep/importer.py gs://your-bucket-name your-folder-id --max-batches 10
+python -m keep.importer gs://your-bucket-name your-folder-id --max-batches 10
 
 # Import from GCS with error tolerance (continues on schema validation errors)
-python keep/importer.py gs://your-bucket-name your-folder-id --ignore-errors
+python -m keep.importer gs://your-bucket-name your-folder-id --ignore-errors
 
 # Import without uploading images (faster, metadata only)
-python keep/importer.py gs://your-bucket-name your-folder-id --no-image-import
+python -m keep.importer gs://your-bucket-name your-folder-id --no-image-import
 ```
 
 **Local Directory Import:**
 ```bash
 # Import all notes from local directory
-python keep/importer.py ../keep-notes-takeout your-folder-id
+python -m keep.importer ../keep-notes-takeout your-folder-id
 
 # Import only first 2 batches from local directory (for trial runs)
-python keep/importer.py ../keep-notes-takeout your-folder-id --max-batches 2
+python -m keep.importer ../keep-notes-takeout your-folder-id --max-batches 2
 
 # Import from local directory with error tolerance
-python keep/importer.py ../keep-notes-takeout your-folder-id --ignore-errors
+python -m keep.importer ../keep-notes-takeout your-folder-id --ignore-errors
 
 # Import without uploading images (faster, metadata only)
-python keep/importer.py ../keep-notes-takeout your-folder-id --no-image-import
+python -m keep.importer ../keep-notes-takeout your-folder-id --no-image-import
 
 # Import with custom batch size for better performance
-python keep/importer.py ../keep-notes-takeout your-folder-id --batch-size 50
+python -m keep.importer ../keep-notes-takeout your-folder-id --batch-size 50
 
 # Import with both batch size and count limits
-python keep/importer.py ../keep-notes-takeout your-folder-id --batch-size 30 --max-batches 10
+python -m keep.importer ../keep-notes-takeout your-folder-id --batch-size 30 --max-batches 10
 
 # Import with soft wipe (clear tabs, preserve sheet for revision history)
-python keep/importer.py ../keep-notes-takeout your-folder-id --wipe
+python -m keep.importer ../keep-notes-takeout your-folder-id --wipe
 
 # Import with hard wipe (delete everything and start fresh)
-python keep/importer.py ../keep-notes-takeout your-folder-id --wipe-hard
+python -m keep.importer ../keep-notes-takeout your-folder-id --wipe-hard
 ```
 
 **Where to find these values:**
@@ -216,10 +237,10 @@ python keep/importer.py ../keep-notes-takeout your-folder-id --wipe-hard
 **Example with fake values:**
 ```bash
 # GCS import using bucket "my-keep-notes-bucket-2024" and folder "1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX"
-python keep/importer.py gs://my-keep-notes-bucket-2024 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX
+python -m keep.importer gs://my-keep-notes-bucket-2024 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX
 
 # Local import using directory "../keep-notes-takeout" and folder "1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX"
-python keep/importer.py ../keep-notes-takeout 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX
+python -m keep.importer ../keep-notes-takeout 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX
 ```
 
 ### Command-Line Options
@@ -263,7 +284,7 @@ python keep/wipe.py <google-drive-folder-id>
 **Example:**
 ```bash
 # Using folder "1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX"
-python keep/wipe.py 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX
+python -m keep.wipe 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX
 ```
 
 **⚠️ WARNING: This script will PERMANENTLY DELETE:**
@@ -303,10 +324,10 @@ The script will automatically detect and complete any partial imports from previ
 ### Default Behavior (Strict)
 ```bash
 # GCS import
-python keep/importer.py gs://your-bucket-name your-folder-id
+python -m keep.importer gs://your-bucket-name your-folder-id
 
 # Local directory import
-python keep/importer.py your-local-directory your-folder-id
+python -m keep.importer your-local-directory your-folder-id
 ```
 - Exits on first schema validation error
 - Ensures data quality and consistency
@@ -315,10 +336,10 @@ python keep/importer.py your-local-directory your-folder-id
 ### Error Tolerant Mode
 ```bash
 # GCS import with error tolerance
-python keep/importer.py gs://your-bucket-name your-folder-id --ignore-errors
+python -m keep.importer gs://your-bucket-name your-folder-id --ignore-errors
 
 # Local directory import with error tolerance
-python keep/importer.py your-local-directory your-folder-id --ignore-errors
+python -m keep.importer your-local-directory your-folder-id --ignore-errors
 ```
 - Continues processing even if some notes fail validation
 - Skips problematic notes and continues with valid ones
@@ -450,10 +471,10 @@ For convenience, you can set up default values for common parameters in a `confi
 3. **Run with defaults:**
    ```bash
    # Uses values from config.ini
-   python keep/importer.py
+   python -m keep.importer
    
    # Override specific values
-   python keep/importer.py --batch-size 50
+   python -m keep.importer --batch-size 50
    ```
 
 **Note:** The `config.ini` file is gitignored and won't be committed accidentally. Command line arguments always override config.ini values.
