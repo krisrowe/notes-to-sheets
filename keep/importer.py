@@ -6,6 +6,7 @@ import json
 from jsonschema import validate, ValidationError
 from execution.processor import process_notes
 from keep.note_source import KeepNoteSource
+from execution.config import config, DEFAULT_BATCH_SIZE, DEFAULT_IGNORE_ERRORS
 
 # --- Configuration ---
 # The name of your Google Cloud Storage bucket containing the Keep Takeout files.
@@ -53,6 +54,8 @@ def get_default_config():
         }
     }
 
+
+
 # Load JSON schema for validation
 def load_keep_schema():
     """Load the JSON schema for Google Keep note validation."""
@@ -76,7 +79,7 @@ def load_keep_schema():
 
 
 
-def main(source_path, target_config, max_batches=-1, ignore_errors=False, no_image_import=False, batch_size=20, wipe_mode=None):
+def main(source_path, target_config, max_batches=None, ignore_errors=None, no_image_import=None, batch_size=None, wipe_mode=None):
     """
     Main function to run the export process using abstract source and target interfaces.
     
@@ -89,8 +92,14 @@ def main(source_path, target_config, max_batches=-1, ignore_errors=False, no_ima
         batch_size: Number of notes per batch
         wipe_mode: If 'soft' or 'hard', wipe the target before importing
     """
-    # Load configuration
-    config = load_config()
+    # Get configuration values from centralized config
+    final_max_batches = config.get_max_batches()
+    final_ignore_errors = config.get_ignore_errors()
+    final_no_image_import = config.get_no_image_import()
+    final_batch_size = config.get_batch_size()
+    
+    # Load processing configuration
+    processing_config = load_config()
     print("✅ Configuration loaded")
 
     # Load JSON schema for validation
@@ -133,11 +142,11 @@ def main(source_path, target_config, max_batches=-1, ignore_errors=False, no_ima
         note_source=note_source,
         target=target,
         existing_notes=existing_notes,
-        config=config,
-        max_batches=max_batches,
-        batch_size=batch_size,
-        ignore_errors=ignore_errors,
-        sync_images=not no_image_import
+        config=processing_config,
+        max_batches=final_max_batches,
+        batch_size=final_batch_size,
+        ignore_errors=final_ignore_errors,
+        sync_images=not final_no_image_import
     )
 
     print("\nImport complete!")
@@ -345,6 +354,12 @@ def get_existing_notes_from_target(target):
 
 
 if __name__ == '__main__':
+    # Get defaults from centralized config
+    default_source_path = config.get_source_path()
+    default_target_config = config.get_target_config()
+    default_batch_size = config.get_batch_size()
+    default_ignore_errors = config.get_ignore_errors()
+    
     parser = argparse.ArgumentParser(
         description='Import Google Keep notes using abstract source and target interfaces',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -375,15 +390,24 @@ Examples:
   python keep/importer.py ../keep-notes-takeout 1JCoTPNHQcawMi1wOmQ5PM3xUOVQYwTKf --wipe-hard
         """
     )
-    parser.add_argument('source_path', 
-                       help='Source path: gs://bucket-name for GCS or /path/to/directory for local files')
-    parser.add_argument('target_config', help='Target configuration (e.g., Google Drive folder ID)')
-    parser.add_argument('--max-batches', type=int, default=-1,
+    
+    # Make source_path and target_config optional if defaults are provided
+    if default_source_path and default_target_config:
+        parser.add_argument('source_path', nargs='?', default=default_source_path,
+                           help='Source path: gs://bucket-name for GCS or /path/to/directory for local files')
+        parser.add_argument('target_config', nargs='?', default=default_target_config,
+                           help='Target configuration (e.g., Google Drive folder ID)')
+    else:
+        parser.add_argument('source_path', 
+                           help='Source path: gs://bucket-name for GCS or /path/to/directory for local files')
+        parser.add_argument('target_config', help='Target configuration (e.g., Google Drive folder ID)')
+    
+    parser.add_argument('--max-batches', type=int, default=config.get_max_batches(),
                        help='Maximum number of batches to process (default: unlimited, -1)')
-    parser.add_argument('--batch-size', type=int, default=20,
-                       help='Number of notes to process in each batch (default: 20)')
-    parser.add_argument('--ignore-errors', action='store_true', 
-                       help='Continue processing even if schema validation fails (default: exit on first error)')
+    parser.add_argument('--batch-size', type=int, default=config.get_batch_size(),
+                       help=f'Number of notes to process in each batch (default: {DEFAULT_BATCH_SIZE})')
+    parser.add_argument('--ignore-errors', action='store_true', default=config.get_ignore_errors(),
+                       help=f'Continue processing even if schema validation fails (default: {DEFAULT_IGNORE_ERRORS})')
     parser.add_argument('--no-image-import', action='store_true',
                        help='Skip uploading images (only record filenames in target)')
     parser.add_argument('--wipe', action='store_true', default=False,
@@ -400,4 +424,4 @@ Examples:
     elif args.wipe:
         wipe_mode = 'soft'
     
-    main(args.source_path, args.target_config, args.max_batches, args.ignore_errors, args.no_image_import, args.batch_size, wipe_mode)
+    main(args.source_path, args.target_config, config.get_max_batches(), config.get_ignore_errors(), config.get_no_image_import(), config.get_batch_size(), config.get_wipe_mode())

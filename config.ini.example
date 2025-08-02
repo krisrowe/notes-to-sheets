@@ -1,0 +1,18 @@
+# Copy this file to config.ini and customize for your environment
+# This file is gitignored and contains your personal settings
+
+[defaults]
+# Default source path (GCS bucket or local directory)
+# Examples: gs://my-keep-notes-bucket or ../keep-notes-takeout
+source_path = 
+
+# Default target configuration (Google Drive folder ID)
+# From your Google Drive folder URL: https://drive.google.com/drive/folders/FOLDER_ID
+# Example: 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX
+target_config = 
+
+# Default batch processing settings
+batch_size = 20
+
+# Default processing options (true/false)
+ignore_errors = false 

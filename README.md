@@ -427,6 +427,46 @@ Only attachments of type image and annotations of type web link, Google Sheets l
 
 ## Configuration
 
+The project uses two configuration files:
+
+### User Configuration (`config.ini`)
+
+For convenience, you can set up default values for common parameters in a `config.ini` file:
+
+1. **Copy the example file:**
+   ```bash
+   cp config.ini.example config.ini
+   ```
+
+2. **Edit `config.ini` with your settings:**
+   ```ini
+   [defaults]
+   source_path = gs://my-keep-notes-bucket
+   target_config = 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX
+   batch_size = 20
+   ignore_errors = false
+   ```
+
+3. **Run with defaults:**
+   ```bash
+   # Uses values from config.ini
+   python keep/importer.py
+   
+   # Override specific values
+   python keep/importer.py --batch-size 50
+   ```
+
+**Note:** The `config.ini` file is gitignored and won't be committed accidentally. Command line arguments always override config.ini values.
+
+### Configuration Precedence
+
+Settings are applied in this order (later values override earlier ones):
+1. **Hard-coded defaults** (in the code)
+2. **config.ini values** (user configuration)
+3. **Command line arguments** (highest priority)
+
+### Processing Configuration (`keep/config.yaml`)
+
 The script uses `keep/config.yaml` for customizable settings. Each note attribute can be configured with one of four processing actions:
 
 ### Processing Actions

@@ -7,6 +7,7 @@ It uses abstract interfaces for source files and target writing.
 import time
 from typing import Dict, Any
 from execution.note import ProcessedNote
+from execution.config import config
 
 
 def process_notes(
@@ -15,8 +16,8 @@ def process_notes(
     existing_notes: Dict[str, bool],  # note_id -> has_attachments
     config: Dict[str, Any],
     max_batches: int = -1,
-    batch_size: int = 20,
-    ignore_errors: bool = False,
+    batch_size: int = None,
+    ignore_errors: bool = None,
     sync_images: bool = True
 ) -> Dict[str, Any]:
     """
@@ -64,6 +65,10 @@ def process_notes(
     # Process notes using cursor pattern
     print("Starting note processing...")
 
+    # Resolve configuration values
+    final_batch_size = batch_size if batch_size is not None else config.get_batch_size()
+    final_ignore_errors = ignore_errors if ignore_errors is not None else config.get_ignore_errors()
+    
     # Process each note using fetch_next
     while note_source.has_more():
         summary['processed'] += 1
@@ -76,7 +81,7 @@ def process_notes(
         except Exception as e:
             print(f"Error loading note: {e}")
             summary['errors'] += 1
-            if not ignore_errors:
+            if not final_ignore_errors:
                 raise
             continue
 
@@ -145,7 +150,7 @@ def process_notes(
             batched_note_id_count += 1
         
         # Flush batch if it's full
-        if batched_note_id_count >= batch_size:
+        if batched_note_id_count >= final_batch_size:
             if staged_notes or staged_attachments:
                 target_start = time.time()
                 target.write_notes_and_attachments(staged_notes, staged_attachments)
