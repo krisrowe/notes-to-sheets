@@ -39,12 +39,19 @@ processing:
   # ignore: Use textContent instead, log the conversion
   html_content: "ignore"
 
-  # Sharing processing - how to handle shared/received notes
-  # label: Add "Shared"/"Received" labels based on sharing status
-  # error: Exit if note is shared
-  # skip: Skip shared notes entirely
-  # ignore: Process shared notes normally, don't add sharing labels
+  # Shared notes processing - how to handle notes you own and shared with others
+  # label: Add "Shared" label to notes you own and shared
+  # error: Exit if note is shared by you
+  # skip: Skip notes shared by you entirely
+  # ignore: Process shared notes normally, don't add "Shared" label
   shared: "label"
+
+  # Received notes processing - how to handle notes shared with you by others
+  # label: Add "Received" label to notes shared with you
+  # error: Exit if note is shared with you
+  # skip: Skip notes shared with you entirely
+  # ignore: Process received notes normally, don't add "Received" label
+  received: "label"
 
 # Label names (when using "label" action)
 labels:

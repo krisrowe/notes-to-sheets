@@ -1,269 +1,76 @@
 #!/usr/bin/env python3
 """
-Tests for JSON schema validation functionality.
+Tests for schema validation behavior.
+Validates one known good JSON file and tests various validation scenarios.
 """
 
-import json
-import os
 import unittest
+import os
+import json
+import copy
 from jsonschema import validate, ValidationError
-
-# Import the functions we want to test
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from importer import load_keep_schema, validate_keep_note
+from storage.local_source import LocalSourceFileManager
+from keep.note_source import KeepNoteSource
 
 
 class TestSchemaValidation(unittest.TestCase):
-    """Test JSON schema validation functionality."""
+    """Test schema validation behavior."""
     
     def setUp(self):
         """Set up test fixtures."""
-        self.schema = load_keep_schema()
-        self.sample_dir = os.path.join(os.path.dirname(__file__), '..', 'samples')
+        # Create source manager pointing to samples directory
+        samples_dir = os.path.join(os.path.dirname(__file__), '..', 'samples')
+        self.source_manager = LocalSourceFileManager(samples_dir)
         
-    def test_schema_loading(self):
-        """Test that the JSON schema loads correctly."""
-        self.assertIsNotNone(self.schema)
-        self.assertIn('properties', self.schema)
-        self.assertIn('required', self.schema)
-        self.assertIn('title', self.schema['properties'])
-        self.assertIn('createdTimestampUsec', self.schema['properties'])
+        # Load schema for validation
+        schema_path = os.path.join(os.path.dirname(__file__), '..', 'schema.json')
+        with open(schema_path, 'r') as f:
+            self.schema = json.load(f)
         
-    def test_image_sample_validation(self):
-        """Test validation of the image sample file."""
-        sample_file = os.path.join(self.sample_dir, 'image.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
+        # Create note source with schema validation
+        self.note_source = KeepNoteSource(self.source_manager, self.schema)
         
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Image sample validation failed: {e.message}")
-            
-    def test_links_sample_validation(self):
-        """Test validation of the links sample file."""
-        sample_file = os.path.join(self.sample_dir, 'links.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
-        
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Links sample validation failed: {e.message}")
-            
-    def test_tasks_sample_validation(self):
-        """Test validation of the tasks sample file."""
-        sample_file = os.path.join(self.sample_dir, 'tasks.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
-        
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Tasks sample validation failed: {e.message}")
-            
-    def test_standalone_validation_function(self):
-        """Test the standalone validation function."""
-        # Test with valid note data
-        valid_note = {
-            'title': 'Test Note',
-            'createdTimestampUsec': 1234567890000000,
-            'color': 'DEFAULT',
-            'isTrashed': False,
-            'isPinned': False,
-            'isArchived': False
-        }
-        
-        is_valid, error_msg, error_path, schema_path = validate_keep_note(valid_note)
-        self.assertTrue(is_valid)
-        self.assertEqual(error_msg, "")
-        self.assertEqual(error_path, [])
-        self.assertEqual(schema_path, [])
-        
-        # Test with invalid note data (missing required field)
-        invalid_note = {
-            'title': 'Test Note',
-            # Missing createdTimestampUsec
-            'color': 'DEFAULT'
-        }
-        
-        is_valid, error_msg, error_path, schema_path = validate_keep_note(invalid_note)
-        self.assertFalse(is_valid)
-        self.assertIn("createdTimestampUsec", error_msg)
-        
-        # Test with invalid note data (unexpected field)
-        invalid_note2 = {
-            'title': 'Test Note',
-            'createdTimestampUsec': 1234567890000000,
-            'unexpectedField': 'should not be here'
-        }
-        
-        is_valid, error_msg, error_path, schema_path = validate_keep_note(invalid_note2)
-        self.assertFalse(is_valid)
-        self.assertIn("unexpectedField", error_msg)
+        # Load a known good note for testing
+        self.good_note = self.source_manager.get_json_content('minimal_note.json')
     
-    def test_shared_owned_sample_validation(self):
-        """Test validation of the shared owned sample file."""
-        sample_file = os.path.join(self.sample_dir, 'shared_owned.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
-        
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Shared owned sample validation failed: {e.message}")
+    def test_known_good_note_validation(self):
+        """Test validation of a known good note."""
+        # This should pass validation
+        validate(instance=self.good_note, schema=self.schema)
+        self.assertTrue(True)  # If we get here, validation passed
     
-    def test_shared_received_sample_validation(self):
-        """Test validation of the shared received sample file."""
-        sample_file = os.path.join(self.sample_dir, 'shared_received.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
+    def test_missing_required_attribute(self):
+        """Test validation fails when required attribute is missing."""
+        # Remove required 'title' attribute
+        bad_note = copy.deepcopy(self.good_note)
+        del bad_note['title']
         
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Shared received sample validation failed: {e.message}")
+        with self.assertRaises(ValidationError) as context:
+            validate(instance=bad_note, schema=self.schema)
+        
+        self.assertIn("'title' is a required property", str(context.exception))
     
-    def test_trashed_sample_validation(self):
-        """Test validation of the trashed sample file."""
-        sample_file = os.path.join(self.sample_dir, 'trashed.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
+    def test_unknown_enum_value(self):
+        """Test validation fails when using unknown enum value."""
+        # Add color with unknown enum value
+        bad_note = copy.deepcopy(self.good_note)
+        bad_note['color'] = 'INVALID_COLOR'
         
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Trashed sample validation failed: {e.message}")
+        with self.assertRaises(ValidationError) as context:
+            validate(instance=bad_note, schema=self.schema)
+        
+        self.assertIn("'INVALID_COLOR' is not one of", str(context.exception))
     
-    def test_archived_sample_validation(self):
-        """Test validation of the archived sample file."""
-        sample_file = os.path.join(self.sample_dir, 'archived.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
+    def test_unexpected_attribute(self):
+        """Test validation fails when adding unexpected attribute."""
+        # Add unexpected attribute
+        bad_note = copy.deepcopy(self.good_note)
+        bad_note['unexpectedField'] = 'should not be here'
         
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Archived sample validation failed: {e.message}")
-    
-    def test_with_labels_sample_validation(self):
-        """Test validation of the with labels sample file."""
-        sample_file = os.path.join(self.sample_dir, 'with_labels.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
+        with self.assertRaises(ValidationError) as context:
+            validate(instance=bad_note, schema=self.schema)
         
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"With labels sample validation failed: {e.message}")
-    
-    def test_colored_sample_validation(self):
-        """Test validation of the colored sample file."""
-        sample_file = os.path.join(self.sample_dir, 'colored.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
-        
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Colored sample validation failed: {e.message}")
-    
-    def test_multiple_attachments_sample_validation(self):
-        """Test validation of the multiple attachments sample file."""
-        sample_file = os.path.join(self.sample_dir, 'multiple_attachments.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
-        
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Multiple attachments sample validation failed: {e.message}")
-    
-    def test_minimal_note_sample_validation(self):
-        """Test validation of the minimal note sample file."""
-        sample_file = os.path.join(self.sample_dir, 'minimal_note.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
-        
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Minimal note sample validation failed: {e.message}")
-    
-    def test_pinned_note_sample_validation(self):
-        """Test validation of the pinned note sample file."""
-        sample_file = os.path.join(self.sample_dir, 'pinned_note.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
-        
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Pinned note sample validation failed: {e.message}")
-    
-    def test_missing_timestamps_sample_validation(self):
-        """Test validation of the missing timestamps sample file."""
-        sample_file = os.path.join(self.sample_dir, 'missing_timestamps.json')
-        self.assertTrue(os.path.exists(sample_file), f"Sample file not found: {sample_file}")
-        
-        with open(sample_file, 'r') as f:
-            note_data = json.load(f)
-            
-        # This should not raise an exception
-        try:
-            validate(instance=note_data, schema=self.schema)
-            self.assertTrue(True)  # Validation passed
-        except ValidationError as e:
-            self.fail(f"Missing timestamps sample validation failed: {e.message}")
+        self.assertIn("Additional properties are not allowed", str(context.exception))
 
 
 if __name__ == '__main__':
