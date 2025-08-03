@@ -1,0 +1,11 @@
+Name,Description,Auto
+Shopping,Shopping lists and purchase-related notes,TRUE
+Work,Work-related notes meetings projects tasks deadlines,TRUE
+Health,Health fitness medical appointments diet notes,TRUE
+Travel,Travel notes trips itineraries bookings,TRUE
+Learning,Learning educational content courses tutorials research,TRUE
+Finance,Financial notes budgets expenses investments,TRUE
+Recipes,Recipe and cooking notes,TRUE
+Technical,Technical notes code snippets configurations troubleshooting,TRUE
+Ideas,Ideas and creative content brainstorming,TRUE
+Personal,Personal notes family friends thoughts diary entries,FALSE

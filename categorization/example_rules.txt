@@ -1,0 +1,15 @@
+Categorize notes based on the following rules:
+
+1. Personal notes (family, friends, personal thoughts, diary entries) should be labeled "Personal"
+2. Work-related notes (meetings, projects, tasks, deadlines) should be labeled "Work"
+3. Shopping lists and purchase-related notes should be labeled "Shopping"
+4. Health and fitness notes (workouts, medical appointments, diet) should be labeled "Health"
+5. Travel notes (trips, itineraries, bookings) should be labeled "Travel"
+6. Learning and educational content (courses, tutorials, research) should be labeled "Education"
+7. Financial notes (budgets, expenses, investments) should be labeled "Finance"
+8. Recipe and cooking notes should be labeled "Recipes"
+9. Technical notes (code snippets, configurations, troubleshooting) should be labeled "Technical"
+10. Ideas and creative content should be labeled "Ideas"
+
+If a note fits multiple categories, include all relevant labels separated by commas.
+If a note doesn't clearly fit any category, label it as "Miscellaneous".

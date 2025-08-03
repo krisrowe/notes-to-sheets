@@ -3,6 +3,13 @@ service_account.json
 __pycache__/
 venv/
 
+# Configuration files with sensitive data
+config.ini
+categorization/config.ini
+
+# Custom rules files (may contain private categorization logic)
+categorization/rules.txt
+
 # Python
 *.pyc
 *.pyo

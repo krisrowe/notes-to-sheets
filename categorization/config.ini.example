@@ -1,0 +1,15 @@
+# Categorization Module Configuration - Sensitive Data Only
+# Copy this file to config.ini and add your sensitive credentials
+# This file is gitignored and contains only your personal credentials
+# All other settings are now in config.yaml
+
+[categorization]
+# Google Sheet ID to categorize notes from
+# Extract from your Google Sheets URL: https://docs.google.com/spreadsheets/d/SHEET_ID/edit
+# Example: 1ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX-99
+sheet_id = 
+
+# Gemini API key for AI categorization
+# Get your API key from: https://aistudio.google.com/app/apikey
+# Example: AIzaSyABC123DEF456GHI789JKL012MNO345PQR678STU
+gemini_api_key =

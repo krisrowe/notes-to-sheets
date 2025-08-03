@@ -1,0 +1,43 @@
+# Categorization Module Configuration
+# This file contains storage configuration for different data sources
+# Sensitive data (Sheet ID, API keys) are stored in config.ini
+
+storage:
+  # Google Sheets configuration
+  sheets:
+    # Tab/worksheet names
+    source_tab: "Note"
+    rules_tab: "Label"
+    output_tab: "labeled_notes"
+  
+  # CSV files configuration
+  csv:
+    # Base directory for CSV files (relative to categorization module)
+    data_dir: "test_data"
+    
+    # File names (without .csv extension)
+    source_file: "notes"
+    rules_file: "label"
+    output_file: "labeled_notes"
+
+# Processing configuration
+processing:
+  # Default limit for number of notes to process (0 = no limit)
+  default_limit: 10
+  
+  # Enable dry run mode by default
+  dry_run: false
+  
+  # Delay between API calls in seconds (to respect rate limits)
+  api_delay: 0.1
+  
+  # Maximum retries for API calls
+  max_retries: 3
+
+# Filtering configuration
+filters:
+  # Filter notes by existing label (case-sensitive)
+  # Only notes with this exact label will be processed
+  # Leave empty or comment out to process all notes
+  # Example: "Uncategorized" to only process notes with that label
+  label: "AI Vetted"
