@@ -15,11 +15,14 @@ Automatically categorize notes using Google's Gemini AI with smart filtering and
 
 2. **Run categorization:**
    ```bash
-   # Categorize 20 notes from Google Sheets
-   python -m categorization --data-source sheets --limit 20
+   # Easy way - uses settings from config.yaml
+   make categorize
    
-   # Test with CSV files
-   python -m categorization --data-source csv --limit 10
+   # Or test with CSV files
+   make categorize-csv
+   
+   # Or run tests
+   make categorize-test
    ```
 
 ## 🎯 Key Features
@@ -67,17 +70,28 @@ filters:
 
 ## 🚀 Usage
 
-### Basic Commands
+### Easy Way (Recommended)
 
 ```bash
-# Process 20 notes from Google Sheets
-python -m categorization --data-source sheets --limit 20
+# Run categorization with all settings from config.yaml
+make categorize
 
-# Process 10 notes from CSV files (testing)
+# Test with CSV files instead of Google Sheets
+make categorize-csv
+
+# Run the test suite
+make categorize-test
+```
+
+### Advanced Commands
+
+```bash
+# Override specific settings via command line
+python -m categorization --limit 20
 python -m categorization --data-source csv --limit 10
 
-# Use default limit from config.yaml
-python -m categorization --data-source sheets
+# Use default settings from config.yaml
+python -m categorization
 ```
 
 ### Label Filtering

@@ -1,4 +1,4 @@
-.PHONY: help test import clean venv install setup
+.PHONY: help test import clean venv install setup categorize categorize-csv categorize-test
 
 # Default target
 help:
@@ -11,6 +11,11 @@ help:
 	@echo "  make venv         - Create virtual environment"
 	@echo "  make install      - Install dependencies"
 	@echo "  make clean        - Clean up generated files"
+	@echo ""
+	@echo "Categorization commands:"
+	@echo "  make categorize     - Run categorization (uses config.yaml settings)"
+	@echo "  make categorize-csv - Run categorization using CSV test data"
+	@echo "  make categorize-test- Run categorization tests"
 
 # Run tests
 test:
@@ -47,6 +52,19 @@ install:
 setup:
 	@echo "Running interactive setup..."
 	. venv/bin/activate && python configure.py
+
+# Categorization commands
+categorize:
+	@echo "Running categorization (using config.yaml settings)..."
+	. venv/bin/activate && python -m categorization
+
+categorize-csv:
+	@echo "Running categorization using CSV test data..."
+	. venv/bin/activate && python -m categorization --data-source csv
+
+categorize-test:
+	@echo "Running categorization tests..."
+	. venv/bin/activate && python -m pytest categorization/tests/ -v
 
 # Clean up
 clean:
