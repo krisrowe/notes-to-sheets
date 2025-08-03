@@ -141,8 +141,8 @@
           },
           "type": {
             "type": "string",
-            "enum": ["USER"],
-            "description": "Type of sharee (only USER supported)"
+            "enum": ["USER", "GROUP"],
+            "description": "Type of sharee (USER for individual users, GROUP for Google Family groups)"
           },
           "email": {
             "type": "string",

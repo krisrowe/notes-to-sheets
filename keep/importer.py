@@ -79,24 +79,47 @@ def load_keep_schema():
 
 
 
-def main(source_path, target_config, max_batches=None, ignore_errors=None, no_image_import=None, batch_size=None, wipe_mode=None):
+def main():
     """
     Main function to run the export process using abstract source and target interfaces.
-    
-    Args:
-        source_path: Source path (interpreted by source implementation)
-        target_config: Configuration for target (interpreted by target implementation)
-        max_batches: Maximum number of batches to process (-1 for unlimited)
-        ignore_errors: Whether to continue on errors
-        no_image_import: Whether to skip image uploads
-        batch_size: Number of notes per batch
-        wipe_mode: If 'soft' or 'hard', wipe the target before importing
     """
-    # Get processor configuration values (batch size, paths, etc.)
+    # Validate arguments
+    if not args.source_path:
+        print("❌ Error: source_path is required")
+        sys.exit(1)
+    
+    if not args.target_config:
+        print("❌ Error: target_config is required")
+        sys.exit(1)
+    
+    if args.batch_size is not None and args.batch_size <= 0:
+        print("❌ Error: batch_size must be positive")
+        sys.exit(1)
+    
+    if args.max_batches is not None and args.max_batches < -1:
+        print("❌ Error: max_batches must be -1 (unlimited) or >= 0")
+        sys.exit(1)
+    
+    if args.wipe and args.wipe_hard:
+        print("❌ Error: Cannot specify both --wipe and --wipe-hard")
+        sys.exit(1)
+    
+    # Get processor configuration values from config object (handles precedence automatically)
     final_max_batches = config.get_max_batches()
     final_ignore_errors = config.get_ignore_errors()
     final_no_image_import = config.get_no_image_import()
     final_batch_size = config.get_batch_size()
+    
+    # Debug output for image import setting
+    print(f"🔧 Debug - Config no_image_import: {config.get_no_image_import()}")
+    print(f"🔧 Debug - Will sync images: {not final_no_image_import}")
+    
+    # Determine wipe mode
+    wipe_mode = None
+    if args.wipe_hard:
+        wipe_mode = 'hard'
+    elif args.wipe:
+        wipe_mode = 'soft'
     
     # Load Keep processing configuration (how to handle trashed notes, colors, etc.)
     keep_config = load_config()
@@ -110,21 +133,21 @@ def main(source_path, target_config, max_batches=None, ignore_errors=None, no_im
         print("⚠️  JSON schema validation disabled")
 
     # Create source file manager based on source path
-    source_files = create_source_manager(source_path)
+    source_files = create_source_manager(args.source_path)
     
     # Handle wipe mode if specified
     if wipe_mode:
         print(f"🧹 WIPE MODE: {wipe_mode.upper()}")
         if wipe_mode == 'soft':
             print("Clearing sheet tabs and deleting images folder...")
-            wipe_target_soft(target_config)
+            wipe_target_soft(args.target_config)
         elif wipe_mode == 'hard':
             print("Deleting entire import folder and all contents...")
-            wipe_target_hard(target_config)
+            wipe_target_hard(args.target_config)
         print("Wipe complete!")
     
     # Create target manager based on target config (after wipe operations)
-    target = create_target_manager(target_config)
+    target = create_target_manager(args.target_config)
     
     # Get existing notes from target
     existing_notes = get_existing_notes_from_target(target)
@@ -148,6 +171,31 @@ def main(source_path, target_config, max_batches=None, ignore_errors=None, no_im
         ignore_errors=final_ignore_errors,
         sync_images=not final_no_image_import
     )
+
+    # Format output based on configuration
+    output_format = config.get_output_format()
+    
+    if output_format == 'json':
+        # Output as JSON
+        import json
+        print(json.dumps(summary, indent=2))
+    else:
+        # Output as formatted text (default)
+        print(f"\n📊 Processing Summary:")
+        print(f"  - Notes processed: {summary['processed']}")
+        print(f"  - Notes imported: {summary['imported']}")
+        print(f"  - Duplicates skipped: {summary['duplicates']}")
+        print(f"  - Skipped: {summary.get('skipped', 0)}")
+        print(f"  - Errors encountered: {summary['errors']}")
+        print(f"  - Attachments added to existing notes: {summary.get('attachments_added', 0)}")
+        print(f"  - Batches completed: {summary['batches_completed']}")
+        
+        print(f"\n⏱️  Timing Summary:")
+        timing = summary.get('timing', {})
+        print(f"  - Source loading time: {timing.get('source_total_time', 0):.2f}s")
+        print(f"  - Target writing time: {timing.get('target_total_time', 0):.2f}s")
+        print(f"  - Processing time: {timing.get('processing_time', 0):.2f}s")
+        print(f"  - Total run time: {timing.get('total_run_time', 0):.2f}s")
 
     print("\nImport complete!")
 
@@ -417,11 +465,4 @@ Examples:
     
     args = parser.parse_args()
     
-    # Determine wipe mode
-    wipe_mode = None
-    if args.wipe_hard:
-        wipe_mode = 'hard'
-    elif args.wipe:
-        wipe_mode = 'soft'
-    
-    main(args.source_path, args.target_config, config.get_max_batches(), config.get_ignore_errors(), config.get_no_image_import(), config.get_batch_size(), config.get_wipe_mode())
+    main()

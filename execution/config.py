@@ -16,6 +16,7 @@ DEFAULT_MAX_BATCHES = -1
 DEFAULT_IGNORE_ERRORS = False
 DEFAULT_NO_IMAGE_IMPORT = False
 DEFAULT_WIPE_MODE = None
+DEFAULT_OUTPUT_FORMAT = 'text'
 
 
 class Config:
@@ -54,7 +55,7 @@ class Config:
                 parser.add_argument('target_config', nargs='?')
                 
                 self._cmd_line_args, _ = parser.parse_known_args()
-            except:
+            except Exception as e:
                 self._cmd_line_args = None
         
         return self._cmd_line_args
@@ -65,7 +66,8 @@ class Config:
         cmd_args = self._get_cmd_line_args()
         if cmd_args:
             cmd_value = getattr(cmd_args, key.replace('-', '_'), None)
-            if cmd_value is not None:
+            # Only use command line value if it was explicitly provided (not just the default)
+            if cmd_value is not None and cmd_value != default_value:
                 return cmd_value
         
         # Check config.ini
@@ -98,6 +100,10 @@ class Config:
     def get_no_image_import(self) -> bool:
         """Get no_image_import with proper precedence: cmd_line > config.ini > default."""
         return self._get_config_value('no_image_import', DEFAULT_NO_IMAGE_IMPORT, 'bool')
+    
+    def get_output_format(self) -> str:
+        """Get output_format with proper precedence: cmd_line > config.ini > default."""
+        return self._get_config_value('output_format', DEFAULT_OUTPUT_FORMAT, 'str')
     
     def get_source_path(self) -> str:
         """Get source path with proper precedence: cmd_line > config.ini > default."""

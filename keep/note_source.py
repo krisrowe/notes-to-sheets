@@ -62,7 +62,11 @@ class KeepNoteSource(NoteSource):
         
         # Validate against schema if provided
         if self.schema:
-            validate(instance=json_content, schema=self.schema)
+            try:
+                validate(instance=json_content, schema=self.schema)
+            except Exception as e:
+                print(f"❌ Schema validation failed for file: {filename}")
+                raise
         
         # Process Keep-specific note data
         processed_note, ignore_actions = self._process_keep_note(json_content)

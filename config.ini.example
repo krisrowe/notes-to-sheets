@@ -15,4 +15,12 @@ target_config =
 batch_size = 20
 
 # Default processing options (true/false)
-ignore_errors = false 
+ignore_errors = False
+
+# Disable image syncing to Google Drive (true/false)
+# Set to true to skip uploading images to Drive (saves API quota and time)
+no_image_import = False
+
+# Output format (text/json)
+# Set to 'json' for machine-readable output, 'text' for human-readable output
+output_format = text 

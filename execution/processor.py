@@ -238,24 +238,18 @@ def process_notes(
                 print(f"✅ All session images already exist in target")
     
     # Calculate final timing statistics
-    timing_stats['processing_total_time'] = time.time() - timing_stats['start_time']
+    total_run_time = time.time() - timing_stats['start_time']
+    processing_time = total_run_time - timing_stats['source_total_time'] - timing_stats['target_total_time']
+    
+    # Update timing stats with calculated values
+    timing_stats['total_run_time'] = total_run_time
+    timing_stats['processing_time'] = processing_time
     
     # Add batch count to summary
     summary['batches_completed'] = total_batches
     
-    # Print final summary
-    print(f"\n📊 Processing Summary:")
-    print(f"  - Notes processed: {summary['processed']}")
-    print(f"  - Notes imported: {summary['imported']}")
-    print(f"  - Duplicates skipped: {summary['duplicates']}")
-    print(f"  - Errors encountered: {summary['errors']}")
-    print(f"  - Attachments added to existing notes: {summary.get('attachments_added', 0)}")
-    print(f"  - Batches completed: {total_batches}")
-    
-    print(f"\n⏱️  Timing Summary:")
-    print(f"  - Total processing time: {timing_stats['processing_total_time']:.2f}s")
-    print(f"  - Source loading time: {timing_stats['source_total_time']:.2f}s")
-    print(f"  - Target writing time: {timing_stats['target_total_time']:.2f}s")
+    # Add timing information to summary
+    summary['timing'] = timing_stats
     
     return summary
 
