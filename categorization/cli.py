@@ -47,7 +47,6 @@ Configuration:
     parser.add_argument(
         '--data-source',
         choices=['sheets', 'csv'],
-        default='sheets',
         help='Data source type: sheets (Google Sheets) or csv (CSV files for testing)'
     )
     
@@ -57,14 +56,14 @@ Configuration:
         help='Limit the number of notes to process (overrides config.yaml default)'
     )
     
-    args = parser.parse_args()
-    
-    # Load configuration
-    config = CategorizationConfig()
-    
-    # Load configuration
+    # Load configuration first to get default data source
     config = CategorizationConfig()
     yaml_config = config.get_yaml_config()
+    
+    # Set default data source from config
+    parser.set_defaults(data_source=yaml_config.get_default_data_source())
+    
+    args = parser.parse_args()
     
     # Get required sensitive data from config.ini
     sheet_id = config.get_sheet_id()

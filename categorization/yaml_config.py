@@ -44,6 +44,15 @@ class YAMLConfig:
         """
         return self.config.get('storage', {}).get(data_source, {})
     
+    def get_default_data_source(self) -> str:
+        """
+        Get the default data source type from configuration.
+        
+        Returns:
+            Default data source type ('sheets' or 'csv')
+        """
+        return self.config.get('storage', {}).get('default', 'sheets')
+    
     def get_processing_config(self) -> Dict[str, Any]:
         """Get processing configuration."""
         return self.config.get('processing', {})

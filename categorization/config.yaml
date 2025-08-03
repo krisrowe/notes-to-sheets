@@ -3,6 +3,9 @@
 # Sensitive data (Sheet ID, API keys) are stored in config.ini
 
 storage:
+  # Default data source type: 'sheets' or 'csv'
+  default: "sheets"
+  
   # Google Sheets configuration
   sheets:
     # Tab/worksheet names
