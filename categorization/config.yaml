@@ -26,7 +26,7 @@ storage:
 # Processing configuration
 processing:
   # Default limit for number of notes to process (0 = no limit)
-  default_limit: 10
+  default_limit: 50
   
   # Enable dry run mode by default
   dry_run: false
@@ -36,6 +36,11 @@ processing:
   
   # Maximum retries for API calls
   max_retries: 3
+  
+  # Label delimiter for multiple labels in a single field
+  # AppSheet format: " , " (space + comma + space)
+  # Common format: "," (comma only)
+  label_delimiter: " , "
 
 # Filtering configuration
 filters:
@@ -43,4 +48,4 @@ filters:
   # Only notes with this exact label will be processed
   # Leave empty or comment out to process all notes
   # Example: "Uncategorized" to only process notes with that label
-  label: "AI Vetted"
+  label: "Uncategorized"

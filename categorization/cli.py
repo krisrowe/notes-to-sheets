@@ -111,7 +111,7 @@ Configuration:
             data_source = GoogleSheetsDataSource(sheet_id, yaml_config)
             print(f"📊 Using Google Sheets data source: {sheet_id}")
         
-        gemini_categorizer = GeminiCategorizer(api_key)
+        gemini_categorizer = GeminiCategorizer(api_key, yaml_config.get_label_delimiter())
         rules_manager = RulesManager(data_source)
         categorization_service = CategorizationService(data_source, gemini_categorizer, rules_manager, yaml_config)
         

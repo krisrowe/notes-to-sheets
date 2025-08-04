@@ -10,12 +10,13 @@ import time
 class GeminiCategorizer:
     """Client for categorizing notes using Google's Gemini API."""
     
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str = None, label_delimiter: str = ', '):
         """
         Initialize the Gemini categorizer.
         
         Args:
             api_key: Gemini API key. If not provided, will look for GEMINI_API_KEY env var.
+            label_delimiter: Delimiter for multiple labels (e.g., ', ' for AppSheet, ',' for common format)
         """
         if api_key is None:
             api_key = os.getenv('GEMINI_API_KEY')
@@ -25,6 +26,7 @@ class GeminiCategorizer:
         
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.label_delimiter = label_delimiter
     
     def categorize_notes(self, notes: List[Dict[str, Any]], categorization_rules: str) -> List[Dict[str, Any]]:
         """
@@ -89,7 +91,7 @@ Please respond with only the category labels, separated by commas. Do not includ
             labels = response.text.strip()
             
             # Clean up the response - remove any extra whitespace and ensure proper formatting
-            labels = ', '.join([label.strip() for label in labels.split(',') if label.strip()])
+            labels = self.label_delimiter.join([label.strip() for label in labels.split(',') if label.strip()])
             
             return labels
             

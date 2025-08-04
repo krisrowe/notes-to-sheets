@@ -108,6 +108,10 @@ class YAMLConfig:
         """Get maximum retries setting."""
         return self.get_processing_config().get('max_retries', 3)
     
+    def get_label_delimiter(self) -> str:
+        """Get label delimiter for multiple labels in a single field."""
+        return self.get_processing_config().get('label_delimiter', ', ')
+    
     # Filters methods
     def get_filters_config(self) -> Dict[str, Any]:
         """Get filters configuration."""
